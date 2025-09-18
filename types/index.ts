@@ -10,6 +10,10 @@ export interface UploadedFile {
   status: 'processing' | 'completed' | 'error'
   metadata?: any
   content?: any
+  // 이미지 분석 관련 필드
+  imageMetadata?: ImageMetadata
+  imageContentAnalysis?: ImageContentAnalysis
+  isImage?: boolean
 }
 
 // 인스타그램 좋아요 데이터 구조
@@ -107,6 +111,9 @@ export interface AnalysisData {
   
   // 카카오톡 특화 데이터 (선택적)
   kakaoData?: KakaoAnalysisData
+  
+  // 이미지 분석 특화 데이터 (선택적)
+  imageData?: ImageAnalysisData
 }
 
 // 카카오톡 채팅 데이터 구조
@@ -221,6 +228,200 @@ export interface KakaoAnalysisData {
   }
   insights: string[]
   recommendations: string[]
+}
+
+// 이미지 분석 관련 타입 정의
+export interface ImageMetadata {
+  width: number
+  height: number
+  format: string
+  size: number
+  createdAt: Date
+  aspectRatio?: number
+  estimatedCategory?: string
+  contentHints?: string[]
+  location?: {
+    latitude: number
+    longitude: number
+    address?: string
+  }
+  camera: {
+    make: string
+    model: string
+    lens?: string
+    settings?: {
+      aperture?: string
+      shutterSpeed?: string
+      iso?: number
+      focalLength?: number
+    }
+  }
+  tags: string[]
+  colors?: {
+    dominant: string[]
+    palette: string[]
+    mood?: string
+  }
+}
+
+export interface ImageContentAnalysis {
+  objects: Array<{
+    name: string
+    confidence: number
+    boundingBox?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+  }>
+  scenes: Array<{
+    name: string
+    confidence: number
+  }>
+  text?: Array<{
+    content: string
+    confidence: number
+    boundingBox?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+  }>
+  faces?: Array<{
+    count: number
+    emotions?: Array<{
+      emotion: string
+      confidence: number
+    }>
+    demographics?: {
+      ageRange?: string
+      gender?: string
+    }
+  }>
+  activities?: Array<{
+    activity: string
+    confidence: number
+  }>
+  landmarks?: Array<{
+    name: string
+    confidence: number
+    location?: {
+      latitude: number
+      longitude: number
+    }
+  }>
+}
+
+export interface ImagePreferenceAnalysis {
+  categories: Array<{
+    category: string
+    count: number
+    percentage: number
+    examples: string[]
+  }>
+  colorPreferences: {
+    dominantColors: Array<{
+      color: string
+      frequency: number
+      percentage: number
+    }>
+    colorMood: 'warm' | 'cool' | 'neutral' | 'vibrant' | 'muted'
+  }
+  stylePreferences: {
+    photographyStyle: 'portrait' | 'landscape' | 'macro' | 'street' | 'abstract' | 'documentary'
+    compositionStyle: 'rule_of_thirds' | 'centered' | 'symmetrical' | 'diagonal' | 'leading_lines'
+    lightingPreference: 'natural' | 'artificial' | 'mixed' | 'low_light'
+  }
+  subjectPreferences: Array<{
+    subject: string
+    frequency: number
+    percentage: number
+    contexts: string[]
+  }>
+  temporalPatterns: {
+    timeOfDay: Array<{
+      period: 'morning' | 'afternoon' | 'evening' | 'night'
+      count: number
+      percentage: number
+    }>
+    dayOfWeek: Array<{
+      day: string
+      count: number
+      percentage: number
+    }>
+    seasonalPatterns?: Array<{
+      season: string
+      count: number
+      percentage: number
+    }>
+  }
+  locationPatterns?: Array<{
+    location: string
+    count: number
+    percentage: number
+    type: 'indoor' | 'outdoor' | 'urban' | 'nature'
+  }>
+}
+
+export interface ImageAnalysisData {
+  type: 'image_analysis'
+  totalImages: number
+  analysisDate: string
+  metadata: {
+    totalSize: number
+    averageSize: number
+    formats: Array<{
+      format: string
+      count: number
+      percentage: number
+    }>
+    dateRange: {
+      start: string
+      end: string
+    }
+  }
+  contentAnalysis: {
+    totalObjects: number
+    uniqueObjects: number
+    objectCategories: Array<{
+      category: string
+      count: number
+      percentage: number
+    }>
+    sceneTypes: Array<{
+      scene: string
+      count: number
+      percentage: number
+    }>
+    textDetection: {
+      imagesWithText: number
+      totalTextInstances: number
+      languages: Array<{
+        language: string
+        count: number
+      }>
+    }
+    faceDetection: {
+      imagesWithFaces: number
+      totalFaces: number
+      emotionDistribution: Array<{
+        emotion: string
+        count: number
+        percentage: number
+      }>
+    }
+  }
+  preferenceAnalysis: ImagePreferenceAnalysis
+  insights: string[]
+  recommendations: string[]
+  personalizedSuggestions: Array<{
+    type: 'photography_tip' | 'style_suggestion' | 'location_recommendation' | 'equipment_suggestion'
+    title: string
+    description: string
+    confidence: number
+  }>
 }
 
 export interface ServiceGuide {

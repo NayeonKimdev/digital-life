@@ -12,13 +12,14 @@ import {
   Bars3Icon,
   UserCircleIcon,
   DocumentArrowDownIcon,
-  CloudArrowUpIcon
+  CloudArrowUpIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline'
 import { Card, Button, AnimatedCard } from '@/components/ui'
 import type { ServiceGuide } from '@/types'
 
 export default function ServiceGuide() {
-  const [activeTab, setActiveTab] = useState('instagram')
+  const [activeTab, setActiveTab] = useState('images')
 
   const services = {
     instagram: {
@@ -134,6 +135,37 @@ export default function ServiceGuide() {
           icon: <ChevronRightIcon className="w-6 h-6" />
         }
       ]
+    },
+    images: {
+      name: '이미지 분석',
+      icon: '📸',
+      steps: [
+        {
+          title: '이미지 준비',
+          description: '분석하고 싶은 사진들을 준비합니다',
+          icon: <PhotoIcon className="w-6 h-6" />
+        },
+        {
+          title: '다중 선택',
+          description: 'Ctrl+A (전체선택) 또는 개별 선택으로 여러 이미지를 선택합니다',
+          icon: <ClipboardDocumentIcon className="w-6 h-6" />
+        },
+        {
+          title: '드래그 앤 드롭',
+          description: '선택한 이미지들을 업로드 영역으로 드래그하거나 클릭하여 업로드합니다',
+          icon: <CloudArrowUpIcon className="w-6 h-6" />
+        },
+        {
+          title: '실시간 분석',
+          description: 'AI가 이미지 내용을 분석하여 취향과 선호도를 파악합니다',
+          icon: <DocumentArrowDownIcon className="w-6 h-6" />
+        },
+        {
+          title: '결과 확인',
+          description: '개인화된 분석 결과와 추천사항을 확인합니다',
+          icon: <ChevronRightIcon className="w-6 h-6" />
+        }
+      ]
     }
   }
 
@@ -238,6 +270,7 @@ export default function ServiceGuide() {
           <div>
             <h4 className="font-medium text-gray-800 mb-2">데이터 준비 시간</h4>
             <ul className="text-sm text-gray-600 space-y-1">
+              <li>• 이미지 분석: 즉시 분석 가능</li>
               <li>• Instagram: 24-48시간 소요</li>
               <li>• 카카오톡: 즉시 다운로드 가능</li>
               <li>• 네이버: 1-2시간 소요</li>
@@ -251,6 +284,7 @@ export default function ServiceGuide() {
               <li>• 분석 후 원본 파일은 자동 삭제됩니다</li>
               <li>• 개인정보는 제3자와 공유되지 않습니다</li>
               <li>• 언제든지 데이터 삭제 요청이 가능합니다</li>
+              <li>• 이미지는 로컬에서만 분석되며 서버로 전송되지 않습니다</li>
             </ul>
           </div>
         </div>

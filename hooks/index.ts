@@ -1,7 +1,7 @@
 // 커스텀 훅들
 import { useState, useCallback } from 'react'
 import { UploadedFile } from '@/types'
-import { extractImageMetadata, parseJsonFile, parseCsvFile, parseKakaoChatFile } from '@/utils'
+import { extractImageMetadata, parseJsonFile, parseCsvFile, parseKakaoChatFile, analyzeImageContent, analyzeImages, generateEmotionData, generateLocationData } from '@/utils'
 
 export const useFileUpload = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
@@ -16,13 +16,18 @@ export const useFileUpload = () => {
       lastModified: file.lastModified,
       file: file,
       preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
-      status: 'processing'
+      status: 'processing',
+      isImage: file.type.startsWith('image/')
     }
 
     try {
       // 파일 타입별 처리
       if (file.type.startsWith('image/')) {
-        fileData.metadata = await extractImageMetadata(file)
+        // 이미지 메타데이터 추출
+        fileData.imageMetadata = await extractImageMetadata(file)
+        
+        // 이미지 내용 분석 (메타데이터 전달)
+        fileData.imageContentAnalysis = await analyzeImageContent(file, fileData.imageMetadata)
       } else if (file.type === 'application/json') {
         fileData.content = await parseJsonFile(file)
       } else if (file.type === 'text/csv') {
@@ -63,7 +68,7 @@ export const useFileUpload = () => {
     setUploadedFiles(prev => prev.filter(file => file.id !== fileId))
   }, [])
 
-  const clearFiles = useCallback(() => {
+  const clearAllFiles = useCallback(() => {
     setUploadedFiles([])
   }, [])
 
@@ -72,7 +77,7 @@ export const useFileUpload = () => {
     isUploading,
     uploadFiles,
     removeFile,
-    clearFiles
+    clearAllFiles
   }
 }
 
@@ -87,13 +92,35 @@ export const useAnalysis = () => {
       // 실제로는 서버에서 AI 분석을 수행하겠지만, 여기서는 실제 데이터 기반 분석
       await new Promise(resolve => setTimeout(resolve, 2000))
       
-      // Instagram 좋아요 데이터 분석
+      // 파일 타입별 분석
       const instagramData = files.find(file => file.content?.type === 'instagram_likes')
       const kakaoData = files.find(file => file.content?.type === 'kakao_chat')
+      const imageFiles = files.filter(file => file.type.startsWith('image/'))
       let analysis = {}
       
-      if (instagramData) {
-        const { analyzeInstagramLikes, generateEmotionData, generateLocationData } = await import('@/utils')
+      if (imageFiles.length > 0) {
+        // 이미지 분석
+        const { analyzeImages } = await import('@/utils')
+        const imageAnalysis = await analyzeImages(files)
+        
+        analysis = {
+          timeline: imageAnalysis.preferenceAnalysis.temporalPatterns.timeOfDay.map(item => ({
+            time: item.period,
+            photos: item.count
+          })),
+          categories: imageAnalysis.preferenceAnalysis.categories.slice(0, 5).map((cat, index) => ({
+            name: cat.category,
+            value: cat.count,
+            color: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'][index] || '#E0E0E0'
+          })),
+          emotions: generateEmotionData(),
+          locations: generateLocationData(),
+          insights: imageAnalysis.insights,
+          recommendations: imageAnalysis.recommendations,
+          imageData: imageAnalysis
+        }
+      } else if (instagramData) {
+        const { analyzeInstagramLikes } = await import('@/utils')
         const instagramAnalysis = analyzeInstagramLikes(instagramData.content.likes_media_likes)
         
         // 인스타그램 분석 결과를 기존 AnalysisData 형태로 변환
@@ -119,7 +146,7 @@ export const useAnalysis = () => {
         console.log('=== 카카오톡 데이터 처리 시작 ===')
         console.log('카카오톡 데이터 발견:', kakaoData.content)
         
-        const { analyzeKakaoChat, generateEmotionData, generateLocationData } = await import('@/utils')
+        const { analyzeKakaoChat } = await import('@/utils')
         const kakaoAnalysis = analyzeKakaoChat(kakaoData.content)
         
         console.log('카카오톡 분석 결과:', kakaoAnalysis)
@@ -150,9 +177,7 @@ export const useAnalysis = () => {
         // 기본 샘플 데이터
         const { 
           generateTimelineData, 
-          generateCategoryData, 
-          generateEmotionData, 
-          generateLocationData 
+          generateCategoryData
         } = await import('@/utils')
         
         analysis = {

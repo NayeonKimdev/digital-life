@@ -18,7 +18,7 @@ export const Card = ({ children, className = '' }: CardProps) => {
 interface ButtonProps {
   children: ReactNode
   onClick?: () => void
-  variant?: 'primary' | 'secondary'
+  variant?: 'primary' | 'secondary' | 'outline'
   size?: 'sm' | 'md' | 'lg'
   disabled?: boolean
   className?: string
@@ -36,7 +36,8 @@ export const Button = ({
   
   const variantClasses = {
     primary: 'bg-primary-600 hover:bg-primary-700 text-white',
-    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+    secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800',
+    outline: 'border border-gray-300 hover:bg-gray-50 text-gray-700'
   }
   
   const sizeClasses = {

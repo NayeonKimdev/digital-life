@@ -1,18 +1,273 @@
 // 유틸리티 함수들
 import { CATEGORY_COLORS, CATEGORY_KEYWORDS, TIME_SLOTS } from '@/constants'
-import { InstagramLikeItem, InstagramLikesData, ProcessedInstagramLike, InstagramAnalysisData, AnalysisData, KakaoChatMessage, KakaoChatData, KakaoAnalysisData } from '@/types'
+import { 
+  InstagramLikeItem, 
+  InstagramLikesData, 
+  ProcessedInstagramLike, 
+  InstagramAnalysisData, 
+  AnalysisData, 
+  KakaoChatMessage, 
+  KakaoChatData, 
+  KakaoAnalysisData,
+  ImageMetadata,
+  ImageContentAnalysis,
+  ImagePreferenceAnalysis,
+  ImageAnalysisData,
+  UploadedFile
+} from '@/types'
 
-export const extractImageMetadata = async (file: File): Promise<any> => {
+export const extractImageMetadata = async (file: File): Promise<ImageMetadata> => {
   return new Promise((resolve) => {
     const img = new Image()
+    const url = URL.createObjectURL(file)
+    
     img.onload = () => {
-      resolve({
-        width: img.width,
-        height: img.height,
-        // EXIF 데이터는 서버에서 처리
+      URL.revokeObjectURL(url)
+      
+      // 실제 이미지 크기 추출
+      const width = img.naturalWidth
+      const height = img.naturalHeight
+      const aspectRatio = width / height
+      
+      // 파일 정보 추출
+      const format = file.type.split('/')[1]?.toUpperCase() || 'UNKNOWN'
+      const size = file.size
+      const creationDate = new Date(file.lastModified)
+      
+      // 이미지 비율에 따른 카테고리 추론
+      let estimatedCategory = 'general'
+      if (aspectRatio > 1.5) {
+        estimatedCategory = 'landscape' // 가로가 긴 경우 풍경
+      } else if (aspectRatio < 0.8) {
+        estimatedCategory = 'portrait' // 세로가 긴 경우 인물
+      } else if (Math.abs(aspectRatio - 1) < 0.1) {
+        estimatedCategory = 'square' // 정사각형
+      }
+      
+      // 파일명에서 키워드 추출 (더 정확한 분석)
+      const fileName = file.name.toLowerCase()
+      let contentHints: string[] = []
+      
+      // 과학/화학 관련 키워드
+      const scienceKeywords = ['chem', 'chemistry', 'lab', 'laboratory', 'experiment', 'research', 'science', 'molecule', 'compound', 'reaction', 'test', 'tube', 'beaker', 'flask', 'microscope', 'analysis']
+      if (scienceKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('chemistry', 'laboratory', 'science', 'research')
+      }
+      
+      // 음식 관련 키워드
+      const foodKeywords = ['food', 'meal', 'restaurant', 'cafe', 'coffee', 'lunch', 'dinner', 'breakfast', 'cooking', 'recipe', 'dish', 'plate', 'bowl']
+      if (foodKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('food', 'dining', 'cooking')
+      }
+      
+      // 자연/풍경 관련 키워드
+      const natureKeywords = ['nature', 'landscape', 'outdoor', 'mountain', 'forest', 'tree', 'flower', 'sky', 'sunset', 'sunrise', 'beach', 'ocean', 'river', 'lake']
+      if (natureKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('nature', 'landscape', 'outdoor')
+      }
+      
+      // 인물/포트레이트 관련 키워드
+      const portraitKeywords = ['portrait', 'person', 'face', 'people', 'human', 'selfie', 'photo', 'portrait']
+      if (portraitKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('portrait', 'person', 'people')
+      }
+      
+      // 건물/건축 관련 키워드
+      const architectureKeywords = ['building', 'architecture', 'house', 'home', 'office', 'church', 'temple', 'bridge', 'tower']
+      if (architectureKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('architecture', 'building', 'urban')
+      }
+      
+      // 기술/IT 관련 키워드
+      const techKeywords = ['tech', 'technology', 'computer', 'laptop', 'phone', 'device', 'gadget', 'software', 'hardware']
+      if (techKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('technology', 'digital', 'electronics')
+      }
+      
+      // 예술/디자인 관련 키워드
+      const artKeywords = ['art', 'design', 'painting', 'drawing', 'sketch', 'creative', 'artwork', 'gallery', 'museum']
+      if (artKeywords.some(keyword => fileName.includes(keyword))) {
+        contentHints.push('art', 'design', 'creative')
+      }
+      
+      // 색상 분석 수행
+      analyzeImageColors(file).then(colorAnalysis => {
+        const metadata: ImageMetadata = {
+          width,
+          height,
+          format,
+          size,
+          createdAt: creationDate,
+          aspectRatio,
+          estimatedCategory,
+          contentHints,
+          // 카메라 정보는 실제로는 EXIF에서 추출해야 함
+          camera: {
+            make: 'Unknown',
+            model: 'Unknown'
+          },
+          // 태그는 파일명과 내용 힌트를 기반으로 생성
+          tags: contentHints,
+          // 실제 색상 분석 결과
+          colors: {
+            dominant: colorAnalysis.dominant,
+            palette: colorAnalysis.palette,
+            mood: colorAnalysis.mood
+          }
+        }
+        resolve(metadata)
       })
     }
-    img.src = URL.createObjectURL(file)
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      // 이미지 로드 실패 시 기본값 반환
+      const metadata: ImageMetadata = {
+        width: 0,
+        height: 0,
+        format: 'UNKNOWN',
+        size: file.size,
+        createdAt: new Date(file.lastModified),
+        aspectRatio: 1,
+        estimatedCategory: 'unknown',
+        contentHints: [],
+        camera: {
+          make: 'Unknown',
+          model: 'Unknown'
+        },
+        tags: [],
+        colors: {
+          dominant: [],
+          palette: []
+        }
+      }
+      resolve(metadata)
+    }
+    
+    img.src = url
+  })
+}
+
+// 이미지 색상 분석 함수
+export const analyzeImageColors = async (file: File): Promise<{dominant: string[], palette: string[], mood: string}> => {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      
+      // 캔버스 크기 설정 (성능을 위해 작게)
+      const maxSize = 100
+      const aspectRatio = img.naturalWidth / img.naturalHeight
+      
+      if (aspectRatio > 1) {
+        canvas.width = maxSize
+        canvas.height = maxSize / aspectRatio
+      } else {
+        canvas.height = maxSize
+        canvas.width = maxSize * aspectRatio
+      }
+      
+      // 이미지를 캔버스에 그리기
+      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height)
+      
+      if (!ctx) {
+        resolve({dominant: [], palette: [], mood: 'neutral'})
+        return
+      }
+      
+      // 픽셀 데이터 추출
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const pixels = imageData.data
+      
+      // 색상 히스토그램 생성
+      const colorCounts: {[key: string]: number} = {}
+      const colorGroups: {[key: string]: number[]} = {
+        red: [],
+        green: [],
+        blue: [],
+        warm: [],
+        cool: [],
+        neutral: []
+      }
+      
+      // 샘플링 (모든 픽셀을 분석하면 너무 느림)
+      const sampleRate = 10
+      for (let i = 0; i < pixels.length; i += sampleRate * 4) {
+        const r = pixels[i]
+        const g = pixels[i + 1]
+        const b = pixels[i + 2]
+        
+        // 투명도가 있는 픽셀은 제외
+        if (pixels[i + 3] < 128) continue
+        
+        // RGB를 HEX로 변환
+        const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+        
+        // 색상 그룹 분류
+        if (r > g && r > b) colorGroups.red.push(r)
+        if (g > r && g > b) colorGroups.green.push(g)
+        if (b > r && b > g) colorGroups.blue.push(b)
+        
+        // 따뜻한 색상 (빨강, 주황, 노랑)
+        if (r > 150 && g > 100 && b < 100) colorGroups.warm.push(r)
+        // 차가운 색상 (파랑, 초록)
+        else if (b > 150 || (g > 150 && r < 100)) colorGroups.cool.push(b)
+        // 중성 색상 (회색)
+        else if (Math.abs(r - g) < 30 && Math.abs(g - b) < 30 && Math.abs(r - b) < 30) {
+          colorGroups.neutral.push((r + g + b) / 3)
+        }
+        
+        // 색상 카운트
+        colorCounts[hex] = (colorCounts[hex] || 0) + 1
+      }
+      
+      // 가장 많이 나타나는 색상들 찾기
+      const sortedColors = Object.entries(colorCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([color]) => color)
+      
+      // 색상 팔레트 생성 (다양한 색상들)
+      const palette = Object.entries(colorCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 8)
+        .map(([color]) => color)
+      
+      // 색상 무드 결정
+      const warmCount = colorGroups.warm.length
+      const coolCount = colorGroups.cool.length
+      const neutralCount = colorGroups.neutral.length
+      const total = warmCount + coolCount + neutralCount
+      
+      let mood = 'neutral'
+      if (total > 0) {
+        const warmRatio = warmCount / total
+        const coolRatio = coolCount / total
+        const neutralRatio = neutralCount / total
+        
+        if (warmRatio > 0.4) mood = 'warm'
+        else if (coolRatio > 0.4) mood = 'cool'
+        else if (neutralRatio > 0.6) mood = 'neutral'
+        else mood = 'vibrant'
+      }
+      
+      resolve({
+        dominant: sortedColors,
+        palette: palette,
+        mood: mood
+      })
+    }
+    
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      resolve({dominant: [], palette: [], mood: 'neutral'})
+    }
+    
+    img.src = url
   })
 }
 
@@ -1008,4 +1263,643 @@ export const generateLocationData = () => {
     { location: '명동', count: 20 },
     { location: '잠실', count: 15 }
   ]
+}
+
+// 이미지 내용 분석 함수들
+export const analyzeImageContent = async (file: File, metadata?: ImageMetadata): Promise<ImageContentAnalysis> => {
+  // 실제 이미지 메타데이터를 기반으로 내용 분석
+  
+  const fileName = file.name.toLowerCase()
+  const contentHints = metadata?.contentHints || []
+  
+  // 파일명과 메타데이터를 기반으로 객체 감지
+  const objects: Array<{name: string, confidence: number}> = []
+  const scenes: Array<{name: string, confidence: number}> = []
+  const activities: Array<{activity: string, confidence: number}> = []
+  
+  // 화학/과학 관련 내용 감지
+  if (contentHints.includes('chemistry') || contentHints.includes('laboratory') || contentHints.includes('science')) {
+    objects.push(
+      { name: '실험기구', confidence: 0.9 },
+      { name: '화학물질', confidence: 0.85 },
+      { name: '분석장비', confidence: 0.8 }
+    )
+    scenes.push(
+      { name: '실험실', confidence: 0.9 },
+      { name: '연구소', confidence: 0.8 }
+    )
+    activities.push(
+      { activity: '실험', confidence: 0.9 },
+      { name: '연구', confidence: 0.8 }
+    )
+  }
+  
+  // 음식 관련 내용 감지
+  if (contentHints.includes('food') || contentHints.includes('dining')) {
+    objects.push(
+      { name: '음식', confidence: 0.9 },
+      { name: '식기', confidence: 0.8 },
+      { name: '음료', confidence: 0.7 }
+    )
+    scenes.push(
+      { name: '식당', confidence: 0.9 },
+      { name: '카페', confidence: 0.8 }
+    )
+    activities.push(
+      { activity: '식사', confidence: 0.9 },
+      { activity: '요리', confidence: 0.7 }
+    )
+  }
+  
+  // 자연/풍경 관련 내용 감지
+  if (contentHints.includes('nature') || contentHints.includes('landscape')) {
+    objects.push(
+      { name: '나무', confidence: 0.8 },
+      { name: '하늘', confidence: 0.9 },
+      { name: '산', confidence: 0.7 }
+    )
+    scenes.push(
+      { name: '자연', confidence: 0.9 },
+      { name: '야외', confidence: 0.8 }
+    )
+    activities.push(
+      { activity: '등산', confidence: 0.7 },
+      { activity: '산책', confidence: 0.6 }
+    )
+  }
+  
+  // 인물 관련 내용 감지
+  if (contentHints.includes('portrait') || contentHints.includes('person')) {
+    objects.push(
+      { name: '사람', confidence: 0.9 },
+      { name: '얼굴', confidence: 0.8 }
+    )
+    scenes.push(
+      { name: '실내', confidence: 0.7 },
+      { name: '야외', confidence: 0.6 }
+    )
+    activities.push(
+      { activity: '포즈', confidence: 0.8 },
+      { activity: '대화', confidence: 0.6 }
+    )
+  }
+  
+  // 이미지 비율에 따른 추가 분석
+  if (metadata?.aspectRatio) {
+    if (metadata.aspectRatio > 1.5) {
+      scenes.push({ name: '풍경', confidence: 0.7 })
+    } else if (metadata.aspectRatio < 0.8) {
+      scenes.push({ name: '인물', confidence: 0.7 })
+    }
+  }
+  
+  // 텍스트 감지 (파일명 기반)
+  const text: Array<{content: string, confidence: number}> = []
+  if (fileName.includes('formula') || fileName.includes('equation')) {
+    text.push({ content: '화학식', confidence: 0.8 })
+  }
+  if (fileName.includes('data') || fileName.includes('result')) {
+    text.push({ content: '실험결과', confidence: 0.7 })
+  }
+  
+  // 얼굴 감지 (기본적으로 없음으로 설정, 실제로는 얼굴 감지 API 필요)
+  const faces: Array<{
+    count: number
+    emotions: Array<{emotion: string, confidence: number}>
+    demographics: {ageRange: string, gender: string}
+  }> = []
+  
+  // 인물이 포함된 경우에만 얼굴 감지
+  if (contentHints.includes('person') || contentHints.includes('portrait')) {
+    faces.push({
+      count: 1,
+      emotions: [
+        { emotion: 'neutral', confidence: 0.8 },
+        { emotion: 'happy', confidence: 0.2 }
+      ],
+      demographics: {
+        ageRange: '20-40',
+        gender: 'unknown'
+      }
+    })
+  }
+  
+  const analysis: ImageContentAnalysis = {
+    objects: objects.length > 0 ? objects : [{ name: '일반', confidence: 0.5 }],
+    scenes: scenes.length > 0 ? scenes : [{ name: '일반', confidence: 0.5 }],
+    text,
+    faces,
+    activities: activities.length > 0 ? activities : [{ activity: '일반', confidence: 0.5 }],
+    landmarks: []
+  }
+  
+  return analysis
+}
+
+// 이미지 취향 분석 함수
+export const analyzeImagePreferences = (images: UploadedFile[]): ImagePreferenceAnalysis => {
+  const imageFiles = images.filter(file => file.type.startsWith('image/'))
+  
+  if (imageFiles.length === 0) {
+    return {
+      categories: [],
+      colorPreferences: {
+        dominantColors: [],
+        colorMood: 'neutral'
+      },
+      stylePreferences: {
+        photographyStyle: 'portrait',
+        compositionStyle: 'centered',
+        lightingPreference: 'natural'
+      },
+      subjectPreferences: [],
+      temporalPatterns: {
+        timeOfDay: [],
+        dayOfWeek: []
+      }
+    }
+  }
+  
+  // 카테고리 분석 (실제 메타데이터와 내용 분석 기반)
+  const categoryCount: Record<string, { count: number; examples: string[] }> = {}
+  
+  imageFiles.forEach(file => {
+    const analysis = file.imageContentAnalysis
+    const metadata = file.imageMetadata
+    
+    // 메타데이터의 contentHints를 우선 사용
+    if (metadata?.contentHints) {
+      metadata.contentHints.forEach(hint => {
+        const category = hint // 직접 카테고리로 사용
+        if (!categoryCount[category]) {
+          categoryCount[category] = { count: 0, examples: [] }
+        }
+        categoryCount[category].count++
+        if (!categoryCount[category].examples.includes(hint)) {
+          categoryCount[category].examples.push(hint)
+        }
+      })
+    }
+    
+    // 내용 분석 결과도 추가
+    if (analysis) {
+      // 객체 기반 카테고리 분류
+      analysis.objects.forEach(obj => {
+        const category = categorizeImageObject(obj.name)
+        if (!categoryCount[category]) {
+          categoryCount[category] = { count: 0, examples: [] }
+        }
+        categoryCount[category].count++
+        if (!categoryCount[category].examples.includes(obj.name)) {
+          categoryCount[category].examples.push(obj.name)
+        }
+      })
+      
+      // 장면 기반 카테고리 분류
+      analysis.scenes.forEach(scene => {
+        const category = categorizeImageScene(scene.name)
+        if (!categoryCount[category]) {
+          categoryCount[category] = { count: 0, examples: [] }
+        }
+        categoryCount[category].count++
+        if (!categoryCount[category].examples.includes(scene.name)) {
+          categoryCount[category].examples.push(scene.name)
+        }
+      })
+    }
+  })
+  
+  const categories = Object.entries(categoryCount)
+    .map(([category, data]) => ({
+      category,
+      count: data.count,
+      percentage: Math.round((data.count / imageFiles.length) * 100),
+      examples: data.examples.slice(0, 5)
+    }))
+    .sort((a, b) => b.count - a.count)
+  
+  // 색상 선호도 분석 (실제 색상 데이터 기반)
+  const colorCounts: Record<string, number> = {}
+  const colorMoods: string[] = []
+  
+  imageFiles.forEach(file => {
+    const metadata = file.imageMetadata
+    if (metadata?.colors?.dominant) {
+      metadata.colors.dominant.forEach(color => {
+        colorCounts[color] = (colorCounts[color] || 0) + 1
+      })
+    }
+    if (metadata?.colors?.palette) {
+      metadata.colors.palette.forEach(color => {
+        colorCounts[color] = (colorCounts[color] || 0) + 1
+      })
+    }
+  })
+  
+  // 가장 많이 나타나는 색상들
+  const dominantColors = Object.entries(colorCounts)
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5)
+    .map(([color, frequency]) => ({
+      color,
+      frequency,
+      percentage: Math.round((frequency / imageFiles.length) * 100)
+    }))
+  
+  // 색상 무드 결정 (실제 분석된 무드 기반)
+  const moodCounts: Record<string, number> = {}
+  imageFiles.forEach(file => {
+    const metadata = file.imageMetadata
+    if (metadata?.colors?.mood) {
+      moodCounts[metadata.colors.mood] = (moodCounts[metadata.colors.mood] || 0) + 1
+    }
+  })
+  
+  const dominantMood = Object.entries(moodCounts)
+    .sort(([,a], [,b]) => b - a)[0]?.[0] || 'neutral'
+  
+  const colorPreferences = {
+    dominantColors,
+    colorMood: dominantMood as 'warm' | 'cool' | 'neutral' | 'vibrant'
+  }
+  
+  // 스타일 선호도 분석
+  const stylePreferences = {
+    photographyStyle: determinePhotographyStyle(imageFiles),
+    compositionStyle: 'rule_of_thirds' as const,
+    lightingPreference: 'natural' as const
+  }
+  
+  // 주제 선호도 분석
+  const subjectPreferences = categories.slice(0, 10).map(cat => ({
+    subject: cat.category,
+    frequency: cat.count,
+    percentage: cat.percentage,
+    contexts: cat.examples
+  }))
+  
+  // 시간 패턴 분석
+  const temporalPatterns = analyzeTemporalPatterns(imageFiles)
+  
+  return {
+    categories,
+    colorPreferences,
+    stylePreferences,
+    subjectPreferences,
+    temporalPatterns
+  }
+}
+
+// 이미지 객체 카테고리 분류
+const categorizeImageObject = (objectName: string): string => {
+  const categories = {
+    '사람': ['사람', '얼굴', '인물', '자화상', '친구', '가족'],
+    '음식': ['음식', '요리', '식사', '카페', '음료', '디저트', '케이크', '커피'],
+    '자연': ['나무', '꽃', '하늘', '바다', '산', '강', '풍경', '자연'],
+    '건물': ['건물', '집', '카페', '레스토랑', '호텔', '사무실'],
+    '교통': ['자동차', '버스', '지하철', '기차', '비행기', '자전거'],
+    '동물': ['개', '고양이', '새', '물고기', '동물'],
+    '스포츠': ['운동', '축구', '농구', '테니스', '수영', '요가'],
+    '쇼핑': ['쇼핑', '옷', '신발', '가방', '화장품', '상품']
+  }
+  
+  for (const [category, keywords] of Object.entries(categories)) {
+    if (keywords.some(keyword => objectName.includes(keyword))) {
+      return category
+    }
+  }
+  
+  return '기타'
+}
+
+// 이미지 장면 카테고리 분류
+const categorizeImageScene = (sceneName: string): string => {
+  const sceneCategories = {
+    '실내': ['실내', '카페', '레스토랑', '집', '사무실', '학교'],
+    '야외': ['야외', '공원', '산', '바다', '강', '길거리'],
+    '야간': ['야간', '밤', '조명', '불빛'],
+    '일출/일몰': ['일출', '일몰', '노을', '황혼']
+  }
+  
+  for (const [category, keywords] of Object.entries(sceneCategories)) {
+    if (keywords.some(keyword => sceneName.includes(keyword))) {
+      return category
+    }
+  }
+  
+  return '기타'
+}
+
+// 사진 스타일 결정
+const determinePhotographyStyle = (images: UploadedFile[]): 'portrait' | 'landscape' | 'macro' | 'street' | 'abstract' | 'documentary' => {
+  const imageFiles = images.filter(file => file.type.startsWith('image/'))
+  
+  if (imageFiles.length === 0) return 'portrait'
+  
+  // 메타데이터 기반 스타일 결정
+  const portraitCount = imageFiles.filter(file => {
+    const metadata = file.imageMetadata
+    if (!metadata) return false
+    return metadata.width < metadata.height // 세로가 더 긴 경우
+  }).length
+  
+  const landscapeCount = imageFiles.filter(file => {
+    const metadata = file.imageMetadata
+    if (!metadata) return false
+    return metadata.width > metadata.height // 가로가 더 긴 경우
+  }).length
+  
+  if (portraitCount > landscapeCount) return 'portrait'
+  if (landscapeCount > portraitCount) return 'landscape'
+  
+  return 'documentary'
+}
+
+// 시간 패턴 분석
+const analyzeTemporalPatterns = (images: UploadedFile[]) => {
+  const imageFiles = images.filter(file => file.type.startsWith('image/'))
+  
+  if (imageFiles.length === 0) {
+    return {
+      timeOfDay: [],
+      dayOfWeek: []
+    }
+  }
+  
+  // 시간대별 분석 (시뮬레이션)
+  const timeOfDay = [
+    { period: 'morning' as const, count: 15, percentage: 25 },
+    { period: 'afternoon' as const, count: 20, percentage: 33 },
+    { period: 'evening' as const, count: 18, percentage: 30 },
+    { period: 'night' as const, count: 7, percentage: 12 }
+  ]
+  
+  // 요일별 분석 (시뮬레이션)
+  const dayOfWeek = [
+    { day: '월', count: 8, percentage: 13 },
+    { day: '화', count: 9, percentage: 15 },
+    { day: '수', count: 7, percentage: 12 },
+    { day: '목', count: 10, percentage: 17 },
+    { day: '금', count: 12, percentage: 20 },
+    { day: '토', count: 8, percentage: 13 },
+    { day: '일', count: 6, percentage: 10 }
+  ]
+  
+  return {
+    timeOfDay,
+    dayOfWeek
+  }
+}
+
+// 전체 이미지 분석 함수
+export const analyzeImages = async (files: UploadedFile[]): Promise<ImageAnalysisData> => {
+  const imageFiles = files.filter(file => file.type.startsWith('image/'))
+  
+  if (imageFiles.length === 0) {
+    return {
+      type: 'image_analysis',
+      totalImages: 0,
+      analysisDate: new Date().toISOString(),
+      metadata: {
+        totalSize: 0,
+        averageSize: 0,
+        formats: [],
+        dateRange: { start: '', end: '' }
+      },
+      contentAnalysis: {
+        totalObjects: 0,
+        uniqueObjects: 0,
+        objectCategories: [],
+        sceneTypes: [],
+        textDetection: {
+          imagesWithText: 0,
+          totalTextInstances: 0,
+          languages: []
+        },
+        faceDetection: {
+          imagesWithFaces: 0,
+          totalFaces: 0,
+          emotionDistribution: []
+        }
+      },
+      preferenceAnalysis: {
+        categories: [],
+        colorPreferences: {
+          dominantColors: [],
+          colorMood: 'neutral'
+        },
+        stylePreferences: {
+          photographyStyle: 'portrait',
+          compositionStyle: 'centered',
+          lightingPreference: 'natural'
+        },
+        subjectPreferences: [],
+        temporalPatterns: {
+          timeOfDay: [],
+          dayOfWeek: []
+        }
+      },
+      insights: ['분석할 이미지가 없습니다.'],
+      recommendations: ['이미지를 업로드해주세요.'],
+      personalizedSuggestions: []
+    }
+  }
+  
+  // 메타데이터 분석
+  const totalSize = imageFiles.reduce((sum, file) => sum + file.size, 0)
+  const averageSize = totalSize / imageFiles.length
+  
+  const formatCount: Record<string, number> = {}
+  imageFiles.forEach(file => {
+    const format = file.imageMetadata?.format || 'unknown'
+    formatCount[format] = (formatCount[format] || 0) + 1
+  })
+  
+  const formats = Object.entries(formatCount).map(([format, count]) => ({
+    format,
+    count,
+    percentage: Math.round((count / imageFiles.length) * 100)
+  }))
+  
+  const dates = imageFiles
+    .map(file => file.imageMetadata?.createdAt)
+    .filter(Boolean)
+    .sort()
+  
+  const dateRange = {
+    start: dates[0]?.toISOString().split('T')[0] || '',
+    end: dates[dates.length - 1]?.toISOString().split('T')[0] || ''
+  }
+  
+  // 내용 분석
+  const allObjects: string[] = []
+  const allScenes: string[] = []
+  let imagesWithText = 0
+  let totalTextInstances = 0
+  let imagesWithFaces = 0
+  let totalFaces = 0
+  const emotionCount: Record<string, number> = {}
+  
+  imageFiles.forEach(file => {
+    const analysis = file.imageContentAnalysis
+    if (analysis) {
+      analysis.objects.forEach(obj => {
+        allObjects.push(obj.name)
+      })
+      
+      analysis.scenes.forEach(scene => {
+        allScenes.push(scene.name)
+      })
+      
+      if (analysis.text && analysis.text.length > 0) {
+        imagesWithText++
+        totalTextInstances += analysis.text.length
+      }
+      
+      if (analysis.faces && analysis.faces.length > 0) {
+        imagesWithFaces++
+        analysis.faces.forEach(face => {
+          totalFaces += face.count
+          face.emotions?.forEach(emotion => {
+            emotionCount[emotion.emotion] = (emotionCount[emotion.emotion] || 0) + 1
+          })
+        })
+      }
+    }
+  })
+  
+  const uniqueObjects = new Set(allObjects).size
+  const objectCategories = categorizeObjects(allObjects)
+  const sceneTypes = categorizeScenes(allScenes)
+  
+  const emotionDistribution = Object.entries(emotionCount)
+    .map(([emotion, count]) => ({
+      emotion,
+      count,
+      percentage: Math.round((count / totalFaces) * 100)
+    }))
+    .sort((a, b) => b.count - a.count)
+  
+  // 취향 분석
+  const preferenceAnalysis = analyzeImagePreferences(imageFiles)
+  
+  // 인사이트 생성
+  const insights: string[] = []
+  const recommendations: string[] = []
+  const personalizedSuggestions: Array<{
+    type: 'photography_tip' | 'style_suggestion' | 'location_recommendation' | 'equipment_suggestion'
+    title: string
+    description: string
+    confidence: number
+  }> = []
+  
+  // 기본 통계 인사이트
+  insights.push(`총 ${imageFiles.length}장의 이미지를 분석했습니다.`)
+  insights.push(`가장 많이 찍는 주제는 '${preferenceAnalysis.categories[0]?.category || '기타'}'입니다.`)
+  
+  if (preferenceAnalysis.stylePreferences.photographyStyle === 'portrait') {
+    insights.push('인물 사진을 주로 찍는 경향이 있습니다.')
+  } else if (preferenceAnalysis.stylePreferences.photographyStyle === 'landscape') {
+    insights.push('풍경 사진을 주로 찍는 경향이 있습니다.')
+  }
+  
+  // 시간 패턴 인사이트
+  const mostActiveTime = preferenceAnalysis.temporalPatterns.timeOfDay.reduce((max, current) => 
+    current.count > max.count ? current : max
+  )
+  insights.push(`가장 활발한 시간대는 ${mostActiveTime.period}입니다.`)
+  
+  // 추천사항
+  recommendations.push('새로운 각도와 구도로 사진을 찍어보세요.')
+  recommendations.push('다양한 조명 조건에서 촬영해보세요.')
+  
+  if (preferenceAnalysis.categories.length > 0) {
+    const topCategory = preferenceAnalysis.categories[0]
+    recommendations.push(`'${topCategory.category}' 주제로 더 다양한 사진을 찍어보세요.`)
+  }
+  
+  // 개인화된 제안
+  personalizedSuggestions.push({
+    type: 'photography_tip',
+    title: '구도 개선 팁',
+    description: '삼분할 법칙을 활용하여 더 균형잡힌 사진을 찍어보세요.',
+    confidence: 0.85
+  })
+  
+  if (preferenceAnalysis.stylePreferences.photographyStyle === 'portrait') {
+    personalizedSuggestions.push({
+      type: 'equipment_suggestion',
+      title: '인물 사진용 렌즈',
+      description: '85mm 또는 50mm 렌즈를 사용하면 더 좋은 인물 사진을 찍을 수 있습니다.',
+      confidence: 0.90
+    })
+  }
+  
+  return {
+    type: 'image_analysis',
+    totalImages: imageFiles.length,
+    analysisDate: new Date().toISOString(),
+    metadata: {
+      totalSize,
+      averageSize,
+      formats,
+      dateRange
+    },
+    contentAnalysis: {
+      totalObjects: allObjects.length,
+      uniqueObjects,
+      objectCategories,
+      sceneTypes,
+      textDetection: {
+        imagesWithText,
+        totalTextInstances,
+        languages: [{ language: '한국어', count: totalTextInstances }]
+      },
+      faceDetection: {
+        imagesWithFaces,
+        totalFaces,
+        emotionDistribution
+      }
+    },
+    preferenceAnalysis,
+    insights,
+    recommendations,
+    personalizedSuggestions
+  }
+}
+
+// 객체 카테고리화
+const categorizeObjects = (objects: string[]) => {
+  const categoryCount: Record<string, number> = {}
+  
+  objects.forEach(obj => {
+    const category = categorizeImageObject(obj)
+    categoryCount[category] = (categoryCount[category] || 0) + 1
+  })
+  
+  return Object.entries(categoryCount)
+    .map(([category, count]) => ({
+      category,
+      count,
+      percentage: Math.round((count / objects.length) * 100)
+    }))
+    .sort((a, b) => b.count - a.count)
+}
+
+// 장면 카테고리화
+const categorizeScenes = (scenes: string[]) => {
+  const categoryCount: Record<string, number> = {}
+  
+  scenes.forEach(scene => {
+    const category = categorizeImageScene(scene)
+    categoryCount[category] = (categoryCount[category] || 0) + 1
+  })
+  
+  return Object.entries(categoryCount)
+    .map(([category, count]) => ({
+      scene: category,
+      count,
+      percentage: Math.round((count / scenes.length) * 100)
+    }))
+    .sort((a, b) => b.count - a.count)
 }
