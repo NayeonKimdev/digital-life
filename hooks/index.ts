@@ -1,7 +1,7 @@
 // 커스텀 훅들
 import { useState, useCallback } from 'react'
 import { UploadedFile } from '@/types'
-import { extractImageMetadata, parseJsonFile, parseCsvFile } from '@/utils'
+import { extractImageMetadata, parseJsonFile, parseCsvFile, parseKakaoChatFile } from '@/utils'
 
 export const useFileUpload = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
@@ -27,6 +27,9 @@ export const useFileUpload = () => {
         fileData.content = await parseJsonFile(file)
       } else if (file.type === 'text/csv') {
         fileData.content = await parseCsvFile(file)
+      } else if (file.type === 'text/plain' && (file.name.includes('Talk_') || file.name.includes('카카오톡'))) {
+        // 카카오톡 채팅 파일 감지
+        fileData.content = await parseKakaoChatFile(file)
       }
 
       fileData.status = 'completed'
@@ -86,6 +89,7 @@ export const useAnalysis = () => {
       
       // Instagram 좋아요 데이터 분석
       const instagramData = files.find(file => file.content?.type === 'instagram_likes')
+      const kakaoData = files.find(file => file.content?.type === 'kakao_chat')
       let analysis = {}
       
       if (instagramData) {
@@ -111,6 +115,37 @@ export const useAnalysis = () => {
           totalLikes: instagramAnalysis.totalLikes,
           instagramData: instagramAnalysis
         }
+      } else if (kakaoData) {
+        console.log('=== 카카오톡 데이터 처리 시작 ===')
+        console.log('카카오톡 데이터 발견:', kakaoData.content)
+        
+        const { analyzeKakaoChat, generateEmotionData, generateLocationData } = await import('@/utils')
+        const kakaoAnalysis = analyzeKakaoChat(kakaoData.content)
+        
+        console.log('카카오톡 분석 결과:', kakaoAnalysis)
+        
+        // 카카오톡 분석 결과를 기존 AnalysisData 형태로 변환
+        analysis = {
+          timeline: kakaoAnalysis.timeline.map(item => ({
+            date: item.date,
+            messages: item.messages,
+            senders: item.senders
+          })),
+          categories: kakaoAnalysis.topSenders.slice(0, 5).map((sender, index) => ({
+            name: sender.sender,
+            value: sender.messages,
+            color: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'][index] || '#E0E0E0'
+          })),
+          emotions: generateEmotionData(), // 기본 감정 데이터
+          locations: generateLocationData(), // 기본 위치 데이터
+          insights: kakaoAnalysis.insights,
+          recommendations: kakaoAnalysis.recommendations,
+          totalMessages: kakaoAnalysis.totalMessages,
+          kakaoData: kakaoAnalysis
+        }
+        
+        console.log('=== 최종 분석 결과 ===')
+        console.log('analysis:', analysis)
       } else {
         // 기본 샘플 데이터
         const { 

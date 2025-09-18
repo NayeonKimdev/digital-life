@@ -42,7 +42,7 @@ export default function Home() {
             </h1>
             <p className="text-xl md:text-2xl mb-8 text-blue-100">
               인스타그램, 카카오톡, 검색 기록을 분석하여<br />
-              나만의 라이프스타일을 발견하세요
+              나만의 디지털 라이프스타일을 발견하세요
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="flex items-center gap-2">

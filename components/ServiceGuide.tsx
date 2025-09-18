@@ -57,24 +57,29 @@ export default function ServiceGuide() {
       icon: '💬',
       steps: [
         {
-          title: '카카오톡 설정',
-          description: '카카오톡 → 설정 → 개인정보 → 개인정보 처리방침',
+          title: '카카오톡 앱 열기',
+          description: '모바일 카카오톡 앱을 실행합니다',
           icon: <DevicePhoneMobileIcon className="w-6 h-6" />
         },
         {
-          title: '데이터 내보내기',
-          description: '데이터 내보내기 → 대화 내역 선택 → 요청',
-          icon: <ClipboardDocumentIcon className="w-6 h-6" />
+          title: '채팅방 선택',
+          description: '분석하고 싶은 채팅방을 선택합니다',
+          icon: <Bars3Icon className="w-6 h-6" />
         },
         {
-          title: '파일 다운로드',
-          description: '이메일로 받은 파일을 다운로드합니다',
-          icon: <LinkIcon className="w-6 h-6" />
+          title: '햄버거 메뉴 접근',
+          description: '채팅방 상단 → 햄버거 토글(☰) → 채팅방 설정',
+          icon: <Bars3Icon className="w-6 h-6" />
         },
         {
-          title: '업로드',
-          description: '다운로드한 파일을 여기에 업로드하세요',
-          icon: <ChevronRightIcon className="w-6 h-6" />
+          title: '대화 내용 내보내기',
+          description: '채팅방 설정 → 대화 내용 내보내기 → 텍스트 메시지만 보내기',
+          icon: <DocumentArrowDownIcon className="w-6 h-6" />
+        },
+        {
+          title: '이메일 전송 후 업로드',
+          description: '이메일로 받은 txt 파일을 다운로드하여 여기에 업로드하세요',
+          icon: <CloudArrowUpIcon className="w-6 h-6" />
         }
       ]
     },

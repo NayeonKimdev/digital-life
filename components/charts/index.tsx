@@ -21,6 +21,8 @@ interface TimelineChartProps {
     photos?: number
     activities?: number
     users?: number
+    messages?: number
+    senders?: number
   }>
   className?: string
 }
@@ -28,8 +30,24 @@ interface TimelineChartProps {
 export const TimelineChart = ({ data, className = '' }: TimelineChartProps) => {
   const isTimeBased = data[0]?.time !== undefined
   const hasUsers = data[0]?.users !== undefined
-  const dataKey = isTimeBased ? 'likes' : 'photos'
-  const name = isTimeBased ? '좋아요 수' : '사진 수'
+  const hasSenders = data[0]?.senders !== undefined
+  const hasMessages = data[0]?.messages !== undefined
+  
+  // 데이터 키와 이름 결정
+  let dataKey = 'likes'
+  let name = '좋아요 수'
+  
+  if (hasMessages) {
+    dataKey = 'messages'
+    name = '메시지 수'
+  } else if (isTimeBased) {
+    dataKey = 'likes'
+    name = '좋아요 수'
+  } else {
+    dataKey = 'photos'
+    name = '사진 수'
+  }
+  
   const xAxisKey = isTimeBased ? 'time' : 'date'
 
   return (
@@ -40,10 +58,13 @@ export const TimelineChart = ({ data, className = '' }: TimelineChartProps) => {
         <YAxis />
         <Tooltip />
         <Bar dataKey={dataKey} fill="#3B82F6" name={name} />
-        {!isTimeBased && hasUsers && (
+        {!isTimeBased && hasSenders && (
+          <Bar dataKey="senders" fill="#10B981" name="참여자 수" />
+        )}
+        {!isTimeBased && hasUsers && !hasSenders && (
           <Bar dataKey="users" fill="#10B981" name="사용자 수" />
         )}
-        {!isTimeBased && !hasUsers && (
+        {!isTimeBased && !hasUsers && !hasSenders && (
           <Bar dataKey="activities" fill="#10B981" name="활동 수" />
         )}
       </BarChart>
@@ -79,7 +100,7 @@ export const CategoryChart = ({ data, className = '' }: CategoryChartProps) => {
         <Tooltip 
           formatter={(value: number, name: string) => [
             `${value}개`, 
-            name === 'value' ? '좋아요 수' : name
+            name === 'value' ? '메시지 수' : name
           ]}
         />
       </PieChart>
