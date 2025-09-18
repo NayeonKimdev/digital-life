@@ -2,6 +2,8 @@
 import { useState, useCallback } from 'react'
 import { UploadedFile } from '@/types'
 import { extractImageMetadata, parseJsonFile, parseCsvFile, parseKakaoChatFile, analyzeImageContent, analyzeImages, generateEmotionData, generateLocationData } from '@/utils'
+import { detectObjectsInImage, generateObjectInsights, ObjectDetectionResult } from '@/utils/objectDetection'
+import { analyzeImageAdvanced, AdvancedImageAnalysis } from '@/utils/advancedImageAnalysis'
 
 export const useFileUpload = () => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
@@ -28,6 +30,35 @@ export const useFileUpload = () => {
         
         // 이미지 내용 분석 (메타데이터 전달)
         fileData.imageContentAnalysis = await analyzeImageContent(file, fileData.imageMetadata)
+        
+        // 객체 인식 수행
+        try {
+          console.log('객체 인식 시작:', file.name)
+          fileData.objectDetectionResult = await detectObjectsInImage(file)
+          console.log('객체 인식 완료:', fileData.objectDetectionResult)
+        } catch (error) {
+          console.warn('객체 인식 실패:', error)
+          // 객체 인식 실패해도 파일 처리는 계속 진행
+        }
+
+        // 고급 이미지 분석 수행 (선택적)
+        try {
+          console.log('고급 이미지 분석 시작:', file.name)
+          const img = new Image()
+          img.crossOrigin = 'anonymous'
+          
+          await new Promise((resolve, reject) => {
+            img.onload = resolve
+            img.onerror = reject
+            img.src = fileData.preview!
+          })
+          
+          fileData.advancedAnalysisResult = await analyzeImageAdvanced(img)
+          console.log('고급 이미지 분석 완료:', fileData.advancedAnalysisResult)
+        } catch (error) {
+          console.warn('고급 이미지 분석 실패:', error)
+          // 고급 분석 실패해도 파일 처리는 계속 진행
+        }
       } else if (file.type === 'application/json') {
         fileData.content = await parseJsonFile(file)
       } else if (file.type === 'text/csv') {
@@ -103,6 +134,18 @@ export const useAnalysis = () => {
         const { analyzeImages } = await import('@/utils')
         const imageAnalysis = await analyzeImages(files)
         
+        // 객체 인식 결과 수집 및 분석
+        const allDetectedObjects = imageFiles
+          .filter(file => file.objectDetectionResult)
+          .flatMap(file => file.objectDetectionResult!.objects)
+        
+        const objectInsights = allDetectedObjects.length > 0 
+          ? generateObjectInsights(allDetectedObjects)
+          : []
+        
+        // 기존 인사이트와 객체 인식 인사이트 결합
+        const combinedInsights = [...imageAnalysis.insights, ...objectInsights]
+        
         analysis = {
           timeline: imageAnalysis.preferenceAnalysis.temporalPatterns.timeOfDay.map(item => ({
             time: item.period,
@@ -115,9 +158,22 @@ export const useAnalysis = () => {
           })),
           emotions: generateEmotionData(),
           locations: generateLocationData(),
-          insights: imageAnalysis.insights,
+          insights: combinedInsights,
           recommendations: imageAnalysis.recommendations,
-          imageData: imageAnalysis
+          imageData: {
+            ...imageAnalysis,
+            objectDetection: {
+              totalObjects: allDetectedObjects.length,
+              uniqueObjects: new Set(allDetectedObjects.map(obj => obj.class)).size,
+              objectsByCategory: allDetectedObjects.reduce((acc, obj) => {
+                acc[obj.class] = (acc[obj.class] || 0) + 1
+                return acc
+              }, {} as Record<string, number>),
+              averageConfidence: allDetectedObjects.length > 0 
+                ? allDetectedObjects.reduce((sum, obj) => sum + obj.score, 0) / allDetectedObjects.length
+                : 0
+            }
+          }
         }
       } else if (instagramData) {
         const { analyzeInstagramLikes } = await import('@/utils')

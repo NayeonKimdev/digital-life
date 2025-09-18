@@ -1,4 +1,26 @@
 // 타입 정의
+export interface DetectedObject {
+  bbox: [number, number, number, number] // [x, y, width, height]
+  class: string
+  score: number
+  category?: string // 추가된 카테고리 정보
+}
+
+export interface ObjectDetectionResult {
+  objects: DetectedObject[]
+  processingTime: number
+  imageSize: {
+    width: number
+    height: number
+  }
+  // 텍스트 인식 결과 추가
+  textRecognition?: {
+    text: string
+    confidence: number
+    processingTime: number
+  }
+}
+
 export interface UploadedFile {
   id: string
   name: string
@@ -13,6 +35,8 @@ export interface UploadedFile {
   // 이미지 분석 관련 필드
   imageMetadata?: ImageMetadata
   imageContentAnalysis?: ImageContentAnalysis
+  objectDetectionResult?: ObjectDetectionResult
+  advancedAnalysisResult?: any // AdvancedImageAnalysis 타입은 utils/advancedImageAnalysis.ts에서 정의됨
   isImage?: boolean
 }
 

@@ -85,10 +85,14 @@ export default function AnalysisDashboard({ files }: AnalysisDashboardProps) {
             <EyeIcon className="w-8 h-8" />
           </div>
           <div className="text-2xl font-bold text-gray-900">
-            {analysisData?.imageData?.contentAnalysis?.uniqueObjects || analysisData?.instagramData?.uniqueUsers || analysisData?.kakaoData?.uniqueSenders || "5"}
+            {analysisData?.imageData?.objectDetection?.uniqueObjects || analysisData?.imageData?.contentAnalysis?.uniqueObjects || analysisData?.instagramData?.uniqueUsers || analysisData?.kakaoData?.uniqueSenders || "5"}
           </div>
           <div className="text-sm text-gray-500">
-            {analysisData?.imageData ? "감지된 객체 종류" : analysisData?.instagramData ? "팔로우한 사용자" : analysisData?.kakaoData ? "참여자 수" : "방문 지역"}
+            {analysisData?.imageData ? 
+              "감지된 객체 종류" : 
+              analysisData?.instagramData ? "팔로우한 사용자" : 
+              analysisData?.kakaoData ? "참여자 수" : 
+              "방문 지역"}
           </div>
         </div>
 
@@ -150,6 +154,73 @@ export default function AnalysisDashboard({ files }: AnalysisDashboardProps) {
                 <div>구도 선호: {analysisData.imageData.preferenceAnalysis.stylePreferences.compositionStyle}</div>
                 <div>조명 선호: {analysisData.imageData.preferenceAnalysis.stylePreferences.lightingPreference}</div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 객체 인식 결과 */}
+      {analysisData?.imageData?.objectDetection && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h3 className="text-lg font-semibold mb-4">향상된 객체 인식 결과</h3>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h4 className="font-medium text-gray-800 mb-2">감지된 객체 통계</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>총 감지된 객체</span>
+                  <span className="font-medium">{analysisData.imageData.objectDetection.totalObjects}개</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>고유 객체 종류</span>
+                  <span className="font-medium">{analysisData.imageData.objectDetection.uniqueObjects}종류</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>평균 신뢰도</span>
+                  <span className="font-medium">{(analysisData.imageData.objectDetection.averageConfidence * 100).toFixed(1)}%</span>
+                </div>
+                {analysisData.imageData.objectDetection.chemistryObjects && analysisData.imageData.objectDetection.chemistryObjects.total > 0 && (
+                  <div className="flex justify-between text-sm bg-blue-50 p-2 rounded">
+                    <span className="text-blue-700 font-medium">화학 관련 객체</span>
+                    <span className="text-blue-700 font-medium">{analysisData.imageData.objectDetection.chemistryObjects.total}개</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium text-gray-800 mb-2">주요 객체 카테고리</h4>
+              <div className="space-y-2">
+                {Object.entries(analysisData.imageData.objectDetection.objectsByCategory)
+                  .sort(([,a], [,b]) => (b as number) - (a as number))
+                  .slice(0, 5)
+                  .map(([category, count]) => (
+                    <div key={category} className="flex justify-between text-sm">
+                      <span className="capitalize">{category}</span>
+                      <span>{count as number}개</span>
+                    </div>
+                  ))}
+              </div>
+              
+              {/* 텍스트 인식 결과 */}
+              {analysisData.imageData.objectDetection.textRecognition && (
+                <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                  <h5 className="font-medium text-green-800 mb-2">텍스트 인식 결과</h5>
+                  <div className="space-y-2">
+                    <div className="text-sm text-green-700">
+                      <span className="font-medium">인식된 텍스트:</span>
+                      <div className="mt-1 p-2 bg-white rounded border text-xs max-h-20 overflow-y-auto">
+                        {analysisData.imageData.objectDetection.textRecognition.text || '텍스트를 인식하지 못했습니다.'}
+                      </div>
+                    </div>
+                    <div className="text-sm text-green-700">
+                      <span className="font-medium">OCR 신뢰도:</span> {(analysisData.imageData.objectDetection.textRecognition.confidence * 100).toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-green-600">
+                      텍스트 인식 시간: {analysisData.imageData.objectDetection.textRecognition.processingTime.toFixed(0)}ms
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -21,6 +21,8 @@ import { useFileUpload } from '@/hooks'
 import { Card, LoadingSpinner, Button } from '@/components/ui'
 import { SUPPORTED_FILE_TYPES } from '@/constants'
 import { UploadedFile } from '@/types'
+import ObjectDetectionVisualizer from './ObjectDetectionVisualizer'
+import AdvancedAnalysisViewer from './AdvancedAnalysisViewer'
 
 interface FileUploadProps {
   onFilesUploaded: (files: UploadedFile[]) => void
@@ -31,6 +33,8 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showImagePreviews, setShowImagePreviews] = useState(true)
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [selectedImageForDetection, setSelectedImageForDetection] = useState<UploadedFile | null>(null)
+  const [selectedImageForAdvancedAnalysis, setSelectedImageForAdvancedAnalysis] = useState<UploadedFile | null>(null)
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     try {
@@ -265,7 +269,33 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                         {(file.size / 1024 / 1024).toFixed(1)} MB
                       </p>
                       {file.status === 'completed' && (
-                        <CheckCircleIcon className="w-4 h-4 text-green-500 mt-1" />
+                        <div className="flex items-center justify-between mt-1">
+                          <CheckCircleIcon className="w-4 h-4 text-green-500" />
+                          <div className="flex gap-1">
+                            {file.objectDetectionResult && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForDetection(file)
+                                }}
+                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                              >
+                                객체 {file.objectDetectionResult.objects.length}개
+                              </button>
+                            )}
+                            {file.advancedAnalysisResult && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForAdvancedAnalysis(file)
+                                }}
+                                className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                              >
+                                고급 분석
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
 
@@ -345,7 +375,33 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
 
                     <div className="flex items-center gap-2">
                       {file.status === 'completed' && (
-                        <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                        <div className="flex items-center gap-2">
+                          <CheckCircleIcon className="w-5 h-5 text-green-500" />
+                          <div className="flex gap-1">
+                            {file.objectDetectionResult && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForDetection(file)
+                                }}
+                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                              >
+                                객체 {file.objectDetectionResult.objects.length}개
+                              </button>
+                            )}
+                            {file.advancedAnalysisResult && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForAdvancedAnalysis(file)
+                                }}
+                                className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                              >
+                                고급 분석
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
                       <button
                         onClick={(e) => {
@@ -376,6 +432,55 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
             <p className="text-gray-600">파일을 처리하고 있습니다...</p>
           </Card>
         </motion.div>
+      )}
+
+      {/* 객체 인식 시각화 모달 */}
+      {selectedImageForDetection && selectedImageForDetection.objectDetectionResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">객체 인식 결과</h3>
+                <button
+                  onClick={() => setSelectedImageForDetection(null)}
+                  className="p-2 hover:bg-gray-100 rounded-full"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <ObjectDetectionVisualizer
+                imageUrl={selectedImageForDetection.preview!}
+                objects={selectedImageForDetection.objectDetectionResult.objects}
+                imageSize={selectedImageForDetection.objectDetectionResult.imageSize}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 고급 분석 모달 */}
+      {selectedImageForAdvancedAnalysis && selectedImageForAdvancedAnalysis.advancedAnalysisResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-6xl w-full max-h-[95vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">고급 이미지 분석 결과</h3>
+                <button
+                  onClick={() => setSelectedImageForAdvancedAnalysis(null)}
+                  className="p-2 hover:bg-gray-100 rounded-full"
+                >
+                  <XMarkIcon className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <AdvancedAnalysisViewer
+                imageUrl={selectedImageForAdvancedAnalysis.preview!}
+                analysis={selectedImageForAdvancedAnalysis.advancedAnalysisResult}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -7,6 +7,7 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata = {
   title: '디지털 라이프 분석기 | 나의 디지털 자서전',
   description: '인스타그램, 카카오톡, 검색 기록을 분석하여 나만의 디지털 라이프스타일을 발견하세요',
+  charset: 'utf-8',
 }
 
 export default function RootLayout({
