@@ -162,7 +162,7 @@ export default function AnalysisDashboard({ files }: AnalysisDashboardProps) {
                 요일별 좋아요 패턴
               </h3>
               <TimelineChart data={analysisData.instagramData.weeklyPattern.map((item: { day: string; likes: number }) => ({
-                date: item.day,
+                time: item.day,
                 likes: item.likes
               }))} />
             </Card>

@@ -8,7 +8,11 @@ import {
   QrCodeIcon,
   LinkIcon,
   ClipboardDocumentIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  Bars3Icon,
+  UserCircleIcon,
+  DocumentArrowDownIcon,
+  CloudArrowUpIcon
 } from '@heroicons/react/24/outline'
 import { Card, Button, AnimatedCard } from '@/components/ui'
 import type { ServiceGuide } from '@/types'
@@ -27,19 +31,24 @@ export default function ServiceGuide() {
           icon: <DevicePhoneMobileIcon className="w-6 h-6" />
         },
         {
-          title: '설정 메뉴 접근',
-          description: '프로필 → 설정(⚙️) → 개인정보 보호 및 보안',
-          icon: <ClipboardDocumentIcon className="w-6 h-6" />
+          title: '햄버거 메뉴 접근',
+          description: '프로필 → 햄버거 토글(☰) → 계정 센터',
+          icon: <Bars3Icon className="w-6 h-6" />
         },
         {
-          title: '데이터 다운로드',
-          description: '데이터 다운로드 → 요청 제출 → 이메일로 링크 수신',
-          icon: <LinkIcon className="w-6 h-6" />
+          title: '데이터 내보내기',
+          description: '내 정보 및 권한 → 내 정보 내보내기 → 내보내기 만들기',
+          icon: <UserCircleIcon className="w-6 h-6" />
+        },
+        {
+          title: 'JSON 형식 다운로드',
+          description: '기기로 내보내기 → 형식: JSON 선택 → 다운로드',
+          icon: <DocumentArrowDownIcon className="w-6 h-6" />
         },
         {
           title: '파일 업로드',
-          description: '받은 ZIP 파일을 여기에 업로드하세요',
-          icon: <ChevronRightIcon className="w-6 h-6" />
+          description: '받은 JSON 파일을 여기에 업로드하세요',
+          icon: <CloudArrowUpIcon className="w-6 h-6" />
         }
       ]
     },
@@ -162,7 +171,7 @@ export default function ServiceGuide() {
         transition={{ duration: 0.5 }}
         className="card"
       >
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6">
           {services[activeTab as keyof typeof services].steps.map((step, index) => (
             <motion.div
               key={index}
