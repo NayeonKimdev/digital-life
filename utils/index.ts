@@ -16,6 +16,11 @@ import {
   UploadedFile
 } from '@/types'
 
+// 새로운 분석 시스템 export
+export { personalAnalysisSystem, PersonalAnalysisResult } from './personalDataAnalyzer'
+export { optimizedAnalysisPipeline } from './optimizedAnalysisPipeline'
+export { integratedPerformanceManager } from './performanceMonitor'
+
 export const extractImageMetadata = async (file: File): Promise<ImageMetadata> => {
   return new Promise((resolve) => {
     const img = new Image()

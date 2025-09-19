@@ -1,306 +1,452 @@
-'use client'
+// 고급 분석 결과 표시 컴포넌트
+// 새로운 개인 데이터 분석 시스템의 결과를 시각화하는 컴포넌트
 
-import { useState } from 'react'
-import { AdvancedImageAnalysis } from '@/utils/advancedImageAnalysis'
-import { 
-  EyeIcon, 
-  LightBulbIcon, 
-  TagIcon, 
-  SparklesIcon,
-  QuestionMarkCircleIcon
-} from '@heroicons/react/24/outline'
+import React from 'react'
+import { PersonalAnalysisResult, BehaviorPatterns, EmotionalPsychology, PerformanceMetrics } from '@/types'
 
 interface AdvancedAnalysisViewerProps {
-  imageUrl: string
-  analysis: AdvancedImageAnalysis
+  analysisResult: PersonalAnalysisResult
+  performanceMetrics?: PerformanceMetrics
 }
 
-export default function AdvancedAnalysisViewer({ imageUrl, analysis }: AdvancedAnalysisViewerProps) {
-  const [activeTab, setActiveTab] = useState<'objects' | 'scene' | 'classification' | 'features' | 'query'>('objects')
-  const [queryText, setQueryText] = useState('')
-  const [queryResult, setQueryResult] = useState<{ answer: string; confidence: number } | null>(null)
+export const AdvancedAnalysisViewer: React.FC<AdvancedAnalysisViewerProps> = ({
+  analysisResult,
+  performanceMetrics
+}) => {
+  // 안전한 접근을 위한 기본값 설정
+  if (!analysisResult) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="text-center text-gray-500">
+          <div className="text-lg mb-2">📊 분석 결과를 불러오는 중...</div>
+          <div className="text-sm">잠시만 기다려주세요.</div>
+        </div>
+      </div>
+    )
+  }
 
-  const tabs = [
-    { id: 'objects', label: '객체 검출', icon: EyeIcon },
-    { id: 'scene', label: '장면 이해', icon: LightBulbIcon },
-    { id: 'classification', label: '이미지 분류', icon: TagIcon },
-    { id: 'features', label: '특징 추출', icon: SparklesIcon },
-    { id: 'query', label: '자연어 쿼리', icon: QuestionMarkCircleIcon }
-  ]
+  const dataSummary = analysisResult.dataSummary || {
+    totalFilesProcessed: 0,
+    dataTypes: {},
+    timeRange: { start: null, end: null }
+  }
 
-  const handleQuery = async () => {
-    if (!queryText.trim()) return
-    
-    try {
-      // 실제로는 이미지 요소를 전달해야 함
-      const result = { answer: `"${queryText}"에 대한 답변: 이 이미지에서 관련된 내용을 찾을 수 있습니다.`, confidence: 0.85 }
-      setQueryResult(result)
-    } catch (error) {
-      console.error('쿼리 처리 실패:', error)
+  const behaviorPatterns = analysisResult.behaviorPatterns || {
+    timePatterns: {
+      hourlyActivity: {},
+      dailyActivity: {},
+      weekendVsWeekday: { weekend: 0, weekday: 0 },
+      sleepPatternEstimation: {
+        estimatedSleepStart: 23,
+        estimatedSleepEnd: 7,
+        estimatedSleepDuration: 8,
+        sleepQualityIndicator: 'good' as const
+      },
+      mostActiveHours: [],
+      dataTypeByHour: {}
+    },
+    contentPatterns: {
+      topKeywords: [],
+      emotionTrend: {},
+      averageEmotionalScore: 0,
+      emotionalVolatility: 0,
+      contentVolumeByType: {}
+    }
+  }
+
+  const emotionalAnalysis = analysisResult.deepAnalysis?.emotionalPsychology || {
+    emotionalClusters: {},
+    stressPeriods: [],
+    emotionalStability: 1.0,
+    peakEmotionalHours: {},
+    emotionalRecoveryTime: 24.0
+  }
+
+  const recommendations = analysisResult.recommendations || {
+    immediate: {
+      optimalWorkHours: [],
+      contentSuggestions: [],
+      socialActivities: [],
+      wellnessTips: []
+    },
+    longterm: {
+      hobbyDevelopment: [],
+      careerDirection: [],
+      relationshipImprovement: [],
+      personalGrowth: []
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* 이미지 */}
-      <div className="relative">
-        <img
-          src={imageUrl}
-          alt="분석된 이미지"
-          className="w-full max-w-2xl mx-auto rounded-lg shadow-sm"
-        />
-        
-        {/* 객체 바운딩 박스 */}
-        {activeTab === 'objects' && analysis.objectDetection.objects.map((obj, index) => (
-          <div
-            key={index}
-            className="absolute border-2 border-blue-500 bg-blue-500/20"
-            style={{
-              left: `${obj.bbox[0]}px`,
-              top: `${obj.bbox[1]}px`,
-              width: `${obj.bbox[2]}px`,
-              height: `${obj.bbox[3]}px`,
-            }}
-          >
-            <div className="absolute -top-6 left-0 bg-black/80 text-white text-xs px-2 py-1 rounded">
-              {obj.class} ({(obj.confidence * 100).toFixed(1)}%)
+      {/* 데이터 요약 */}
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h3 className="text-xl font-bold mb-4">📊 데이터 요약</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-blue-600">
+              {dataSummary.totalFilesProcessed}
             </div>
+            <div className="text-sm text-gray-600">처리된 파일</div>
           </div>
-        ))}
+          <div className="bg-green-50 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-green-600">
+              {Object.keys(dataSummary.dataTypes).length}
+            </div>
+            <div className="text-sm text-gray-600">데이터 타입</div>
+          </div>
+          <div className="bg-purple-50 p-4 rounded-lg">
+            <div className="text-2xl font-bold text-purple-600">
+              {(analysisResult.processingTime || 0).toFixed(0)}ms
+            </div>
+            <div className="text-sm text-gray-600">처리 시간</div>
+          </div>
+        </div>
       </div>
 
-      {/* 탭 네비게이션 */}
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          )
-        })}
+      {/* 행동 패턴 분석 */}
+      <BehaviorPatternsViewer patterns={behaviorPatterns} />
+
+      {/* 감정/심리 분석 */}
+      <EmotionalAnalysisViewer analysis={emotionalAnalysis} />
+
+      {/* 개인화 추천 */}
+      <PersonalizationViewer recommendations={recommendations} />
+
+      {/* 성능 메트릭 */}
+      {performanceMetrics && (
+        <PerformanceMetricsViewer metrics={performanceMetrics} />
+      )}
+    </div>
+  )
+}
+
+// 행동 패턴 시각화 컴포넌트
+const BehaviorPatternsViewer: React.FC<{ patterns: BehaviorPatterns }> = ({ patterns }) => {
+  const hourlyActivity = patterns?.timePatterns?.hourlyActivity || {}
+  const sleepPattern = patterns?.timePatterns?.sleepPatternEstimation || {
+    estimatedSleepStart: 23,
+    estimatedSleepEnd: 7,
+    estimatedSleepDuration: 8,
+    sleepQualityIndicator: 'good' as const
+  }
+  const topKeywords = patterns?.contentPatterns?.topKeywords || []
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h3 className="text-xl font-bold mb-4">⏰ 행동 패턴 분석</h3>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 시간대별 활동 */}
+        <div>
+          <h4 className="text-lg font-semibold mb-3">시간대별 활동</h4>
+          <div className="space-y-2">
+            {Object.keys(hourlyActivity).length > 0 ? (
+              Object.entries(hourlyActivity)
+                .sort(([a], [b]) => parseInt(a) - parseInt(b))
+                .slice(0, 8)
+                .map(([hour, count]) => {
+                  const maxCount = Math.max(...Object.values(hourlyActivity))
+                  return (
+                    <div key={hour} className="flex items-center">
+                      <div className="w-12 text-sm">{hour}시</div>
+                      <div className="flex-1 bg-gray-200 rounded-full h-2 mx-2">
+                        <div 
+                          className="bg-blue-500 h-2 rounded-full" 
+                          style={{ width: `${maxCount > 0 ? (count / maxCount) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <div className="w-8 text-sm text-gray-600">{count}</div>
+                    </div>
+                  )
+                })
+            ) : (
+              <div className="text-gray-500 text-sm">시간대별 활동 데이터가 없습니다.</div>
+            )}
+          </div>
+        </div>
+
+        {/* 수면 패턴 */}
+        <div>
+          <h4 className="text-lg font-semibold mb-3">수면 패턴 추정</h4>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="text-sm text-gray-600 mb-2">추정 수면 시간</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {sleepPattern.estimatedSleepStart}시 - 
+              {sleepPattern.estimatedSleepEnd}시
+            </div>
+            <div className="text-sm text-gray-600 mt-1">
+              ({sleepPattern.estimatedSleepDuration}시간)
+            </div>
+            <div className={`mt-2 px-2 py-1 rounded text-xs ${
+              sleepPattern.sleepQualityIndicator === 'good' 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-red-100 text-red-800'
+            }`}>
+              {sleepPattern.sleepQualityIndicator === 'good' ? '양호' : '개선 필요'}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 탭 콘텐츠 */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        {activeTab === 'objects' && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">고급 객체 검출 (YOLOv8 스타일)</h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-800 mb-2">감지된 객체</h4>
-                <div className="space-y-2">
-                  {analysis.objectDetection.objects.map((obj, index) => (
-                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <span className="font-medium capitalize">{obj.class}</span>
-                      <span className="text-sm text-gray-600">
-                        {(obj.confidence * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-800 mb-2">통계</h4>
-                <div className="space-y-2 text-sm">
-                  <div>총 객체 수: {analysis.objectDetection.objects.length}개</div>
-                  <div>평균 신뢰도: {(analysis.objectDetection.objects.reduce((sum, obj) => sum + obj.confidence, 0) / analysis.objectDetection.objects.length * 100).toFixed(1)}%</div>
-                  <div>처리 시간: {analysis.objectDetection.processingTime.toFixed(0)}ms</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'scene' && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">장면 이해 (CLIP 기반)</h3>
-            <div className="space-y-4">
-              <div>
-                <h4 className="font-medium text-gray-800 mb-2">장면 설명</h4>
-                <p className="text-gray-700 bg-gray-50 p-3 rounded">{analysis.sceneUnderstanding.sceneDescription}</p>
-              </div>
-              
-              <div className="grid md:grid-cols-3 gap-4">
-                <div>
-                  <h4 className="font-medium text-gray-800 mb-2">분위기</h4>
-                  <div className="bg-blue-50 p-3 rounded text-center">
-                    <span className="text-blue-700 font-medium capitalize">
-                      {analysis.sceneUnderstanding.mood}
-                    </span>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium text-gray-800 mb-2">장소</h4>
-                  <div className="bg-green-50 p-3 rounded text-center">
-                    <span className="text-green-700 font-medium capitalize">
-                      {analysis.sceneUnderstanding.setting}
-                    </span>
-                  </div>
-                </div>
-                
-                <div>
-                  <h4 className="font-medium text-gray-800 mb-2">활동</h4>
-                  <div className="bg-purple-50 p-3 rounded">
-                    {analysis.sceneUnderstanding.activities.length > 0 ? (
-                      <div className="space-y-1">
-                        {analysis.sceneUnderstanding.activities.map((activity, index) => (
-                          <div key={index} className="text-purple-700 text-sm">• {activity}</div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-purple-700 text-sm">활동 감지 없음</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'classification' && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">이미지 분류 (ResNet50 스타일)</h3>
-            <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h4 className="font-medium text-blue-800 mb-2">주요 카테고리</h4>
-                <div className="text-xl font-semibold text-blue-900">
-                  {analysis.imageClassification.primaryCategory}
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-medium text-gray-800 mb-2">전체 분류 결과</h4>
-                <div className="space-y-2">
-                  {analysis.imageClassification.categories.map((category, index) => (
-                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                      <span className="font-medium">{category.category}</span>
-                      <div className="flex items-center gap-2">
-                        <div className="w-32 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-500 h-2 rounded-full" 
-                            style={{ width: `${category.confidence * 100}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-sm text-gray-600 w-12 text-right">
-                          {(category.confidence * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'features' && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">특징 추출 (DINOv2 스타일)</h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="font-medium text-gray-800 mb-2">스타일 특징</h4>
-                <div className="space-y-3">
-                  <div>
-                    <span className="text-sm text-gray-600">구도:</span>
-                    <span className="ml-2 font-medium">{analysis.featureExtraction.styleFeatures.composition}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-gray-600">조명:</span>
-                    <span className="ml-2 font-medium">{analysis.featureExtraction.styleFeatures.lighting}</span>
-                  </div>
-                  <div>
-                    <span className="text-sm text-gray-600">색상 팔레트:</span>
-                    <div className="flex gap-1 mt-1">
-                      {analysis.featureExtraction.styleFeatures.colorPalette.map((color, index) => (
-                        <div
-                          key={index}
-                          className="w-6 h-6 rounded border"
-                          style={{ backgroundColor: color }}
-                        ></div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-medium text-gray-800 mb-2">유사 개념</h4>
-                <div className="flex flex-wrap gap-2">
-                  {analysis.featureExtraction.similarConcepts.map((concept, index) => (
-                    <span key={index} className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">
-                      {concept}
-                    </span>
-                  ))}
-                </div>
-                
-                <div className="mt-4">
-                  <h4 className="font-medium text-gray-800 mb-2">특징 벡터</h4>
-                  <div className="text-xs text-gray-500">
-                    차원: {analysis.featureExtraction.embeddings.length}D
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'query' && (
-          <div>
-            <h3 className="text-lg font-semibold mb-4">자연어 쿼리 (CLIP 기반)</h3>
-            <div className="space-y-4">
-              <div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={queryText}
-                    onChange={(e) => setQueryText(e.target.value)}
-                    placeholder="이미지에 대해 질문해보세요..."
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    onKeyPress={(e) => e.key === 'Enter' && handleQuery()}
-                  />
-                  <button
-                    onClick={handleQuery}
-                    className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-                  >
-                    질문
-                  </button>
-                </div>
-              </div>
-              
-              {queryResult && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <h4 className="font-medium text-green-800 mb-2">답변</h4>
-                  <p className="text-green-700">{queryResult.answer}</p>
-                  <div className="mt-2 text-sm text-green-600">
-                    신뢰도: {(queryResult.confidence * 100).toFixed(1)}%
-                  </div>
-                </div>
-              )}
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <h4 className="font-medium text-gray-800 mb-2">예시 질문</h4>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <div>• "이 이미지의 분위기는 어떤가요?"</div>
-                  <div>• "어떤 활동이 보이나요?"</div>
-                  <div>• "이 사진은 어디서 촬영되었나요?"</div>
-                  <div>• "이미지에 있는 사람들의 감정은?"</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* 주요 키워드 */}
+      <div className="mt-6">
+        <h4 className="text-lg font-semibold mb-3">주요 키워드</h4>
+        <div className="flex flex-wrap gap-2">
+          {topKeywords.length > 0 ? (
+            topKeywords.slice(0, 10).map((keyword, index) => (
+              <span 
+                key={keyword.keyword}
+                className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                style={{ opacity: 1 - (index * 0.1) }}
+              >
+                {keyword.keyword} ({keyword.score.toFixed(2)})
+              </span>
+            ))
+          ) : (
+            <div className="text-gray-500 text-sm">키워드 데이터가 없습니다.</div>
+          )}
+        </div>
       </div>
     </div>
   )
 }
+
+// 감정 분석 시각화 컴포넌트
+const EmotionalAnalysisViewer: React.FC<{ analysis: EmotionalPsychology }> = ({ analysis }) => {
+  const emotionalStability = analysis?.emotionalStability || 1.0
+  const stressPeriods = analysis?.stressPeriods || []
+  const emotionalRecoveryTime = analysis?.emotionalRecoveryTime || 24.0
+  const emotionalClusters = analysis?.emotionalClusters || {}
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h3 className="text-xl font-bold mb-4">🧠 감정/심리 분석</h3>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 감정 안정성 */}
+        <div>
+          <h4 className="text-lg font-semibold mb-3">감정 안정성</h4>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm text-gray-600">안정성 점수</span>
+              <span className="text-lg font-bold text-blue-600">
+                {(emotionalStability * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full" 
+                style={{ width: `${Math.min(emotionalStability * 100, 100)}%` }}
+              />
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {emotionalStability > 0.7 ? '매우 안정적' : 
+               emotionalStability > 0.4 ? '보통' : '불안정'}
+            </div>
+          </div>
+        </div>
+
+        {/* 스트레스 시기 */}
+        <div>
+          <h4 className="text-lg font-semibold mb-3">스트레스 시기</h4>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="text-sm text-gray-600 mb-2">감지된 스트레스 시기</div>
+            <div className="text-2xl font-bold text-red-600">
+              {stressPeriods.length}회
+            </div>
+            <div className="text-sm text-gray-600 mt-1">
+              감정 회복 시간: {emotionalRecoveryTime.toFixed(1)}시간
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 감정 클러스터 */}
+      {Object.keys(emotionalClusters).length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-lg font-semibold mb-3">감정 상태 클러스터</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {Object.entries(emotionalClusters).map(([cluster, data]) => (
+              <div key={cluster} className="bg-gray-50 p-4 rounded-lg">
+                <div className="text-sm font-medium text-gray-700 mb-2">{cluster}</div>
+                <div className="space-y-1 text-sm">
+                  <div>크기: {data.size}</div>
+                  <div>평균 감정: {data.avgEmotion.toFixed(2)}</div>
+                  <div>평균 중요도: {data.avgImportance.toFixed(2)}</div>
+                  <div>주요 시간: {data.commonHours.join(', ')}시</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 개인화 추천 시각화 컴포넌트
+const PersonalizationViewer: React.FC<{ recommendations: PersonalAnalysisResult['recommendations'] }> = ({ recommendations }) => {
+  const immediate = recommendations?.immediate || {
+    optimalWorkHours: [],
+    contentSuggestions: [],
+    socialActivities: [],
+    wellnessTips: []
+  }
+  
+  const longterm = recommendations?.longterm || {
+    hobbyDevelopment: [],
+    careerDirection: [],
+    relationshipImprovement: [],
+    personalGrowth: []
+  }
+
+  const immediateRecommendations = [
+    ...immediate.optimalWorkHours,
+    ...immediate.wellnessTips,
+    ...immediate.contentSuggestions,
+    ...immediate.socialActivities
+  ]
+
+  const longtermRecommendations = [
+    ...longterm.personalGrowth,
+    ...longterm.hobbyDevelopment,
+    ...longterm.careerDirection,
+    ...longterm.relationshipImprovement
+  ]
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h3 className="text-xl font-bold mb-4">🎯 개인화 추천</h3>
+      
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 즉시 실행 가능한 추천 */}
+        <div>
+          <h4 className="text-lg font-semibold mb-3 text-green-600">즉시 실행 가능</h4>
+          <div className="space-y-3">
+            {immediateRecommendations.length > 0 ? (
+              immediateRecommendations.map((rec, index) => (
+                <div key={index} className="flex items-start">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mt-2 mr-3 flex-shrink-0" />
+                  <div className="text-sm">{rec}</div>
+                </div>
+              ))
+            ) : (
+              <div className="text-gray-500 text-sm">즉시 실행 가능한 추천이 없습니다.</div>
+            )}
+          </div>
+        </div>
+
+        {/* 장기적 제안 */}
+        <div>
+          <h4 className="text-lg font-semibold mb-3 text-blue-600">장기적 제안</h4>
+          <div className="space-y-3">
+            {longtermRecommendations.length > 0 ? (
+              longtermRecommendations.map((rec, index) => (
+                <div key={index} className="flex items-start">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mt-2 mr-3 flex-shrink-0" />
+                  <div className="text-sm">{rec}</div>
+                </div>
+              ))
+            ) : (
+              <div className="text-gray-500 text-sm">장기적 제안이 없습니다.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// 성능 메트릭 시각화 컴포넌트
+const PerformanceMetricsViewer: React.FC<{ metrics: PerformanceMetrics }> = ({ metrics }) => {
+  if (!metrics) {
+    return (
+      <div className="bg-white rounded-lg shadow-md p-6">
+        <h3 className="text-xl font-bold mb-4">⚡ 성능 메트릭</h3>
+        <div className="text-center text-gray-500">
+          성능 메트릭 데이터가 없습니다.
+        </div>
+      </div>
+    )
+  }
+
+  const executionTime = metrics.executionTime || 0
+  const memoryUsage = metrics.memoryUsage || 0
+  const userExperience = metrics.userExperience || {
+    responsivenessScore: 0,
+    perceivedPerformance: 'fair' as const,
+    loadingTime: 0
+  }
+  const cacheStats = metrics.cacheStats || {
+    size: 0,
+    hitRate: 0,
+    oldestEntry: 0
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-md p-6">
+      <h3 className="text-xl font-bold mb-4">⚡ 성능 메트릭</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-blue-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-blue-600">
+            {executionTime.toFixed(0)}ms
+          </div>
+          <div className="text-sm text-gray-600">실행 시간</div>
+        </div>
+        <div className="bg-green-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-green-600">
+            {memoryUsage.toFixed(1)}MB
+          </div>
+          <div className="text-sm text-gray-600">메모리 사용량</div>
+        </div>
+        <div className="bg-purple-50 p-4 rounded-lg">
+          <div className="text-2xl font-bold text-purple-600">
+            {userExperience.responsivenessScore}/100
+          </div>
+          <div className="text-sm text-gray-600">반응성 점수</div>
+        </div>
+      </div>
+
+      {/* 사용자 경험 평가 */}
+      <div className="mb-6">
+        <h4 className="text-lg font-semibold mb-3">사용자 경험 평가</h4>
+        <div className="flex items-center space-x-4">
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+            userExperience.perceivedPerformance === 'excellent' ? 'bg-green-100 text-green-800' :
+            userExperience.perceivedPerformance === 'good' ? 'bg-blue-100 text-blue-800' :
+            userExperience.perceivedPerformance === 'fair' ? 'bg-yellow-100 text-yellow-800' :
+            'bg-red-100 text-red-800'
+          }`}>
+            {userExperience.perceivedPerformance === 'excellent' ? '매우 우수' :
+             userExperience.perceivedPerformance === 'good' ? '양호' :
+             userExperience.perceivedPerformance === 'fair' ? '보통' : '개선 필요'}
+          </div>
+          <div className="text-sm text-gray-600">
+            로딩 시간: {userExperience.loadingTime.toFixed(0)}ms
+          </div>
+        </div>
+      </div>
+
+      {/* 단계별 분석 */}
+      {(metrics.analysisSteps?.length || 0) > 0 && (
+        <div>
+          <h4 className="text-lg font-semibold mb-3">단계별 분석</h4>
+          <div className="space-y-2">
+            {(metrics.analysisSteps || []).map((step, index) => (
+              <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+                <div className="text-sm font-medium">{step.step}</div>
+                <div className="text-sm text-gray-600">
+                  {step.duration.toFixed(0)}ms ({step.memoryDelta.toFixed(1)}MB)
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default AdvancedAnalysisViewer

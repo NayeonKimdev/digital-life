@@ -1,4 +1,6 @@
 // 타입 정의
+import { TextRecognitionResult } from '@/utils/textRecognition'
+
 export interface DetectedObject {
   bbox: [number, number, number, number] // [x, y, width, height]
   class: string
@@ -36,6 +38,7 @@ export interface UploadedFile {
   imageMetadata?: ImageMetadata
   imageContentAnalysis?: ImageContentAnalysis
   objectDetectionResult?: ObjectDetectionResult
+  textRecognitionResult?: TextRecognitionResult
   advancedAnalysisResult?: any // AdvancedImageAnalysis 타입은 utils/advancedImageAnalysis.ts에서 정의됨
   isImage?: boolean
 }
@@ -138,6 +141,20 @@ export interface AnalysisData {
   
   // 이미지 분석 특화 데이터 (선택적)
   imageData?: ImageAnalysisData
+  
+  // 새로운 개인 데이터 분석 결과 (선택적)
+  personalAnalysis?: PersonalAnalysisResult
+  behaviorPatterns?: BehaviorPatterns
+  emotionalAnalysis?: EmotionalPsychology
+  performanceMetrics?: {
+    processingTime: number
+    filesProcessed: number
+    cacheStats: {
+      size: number
+      hitRate: number
+      oldestEntry: number
+    }
+  }
 }
 
 // 카카오톡 채팅 데이터 구조
@@ -456,4 +473,104 @@ export interface ServiceGuide {
     description: string
     icon: React.ReactNode
   }>
+}
+
+// 새로운 개인 데이터 분석 시스템 타입들
+export interface PersonalDataPoint {
+  timestamp: Date
+  dataType: 'message' | 'search' | 'photo' | 'document' | 'voice' | 'json_data'
+  content: string
+  metadata: Record<string, any>
+  emotionalScore: number
+  importanceScore: number
+  fileId?: string
+}
+
+export interface BehaviorPatterns {
+  timePatterns: {
+    hourlyActivity: Record<number, number>
+    dailyActivity: Record<string, number>
+    weekendVsWeekday: {
+      weekend: number
+      weekday: number
+    }
+    sleepPatternEstimation: {
+      estimatedSleepStart: number
+      estimatedSleepEnd: number
+      estimatedSleepDuration: number
+      sleepQualityIndicator: 'good' | 'poor'
+    }
+    mostActiveHours: number[]
+    dataTypeByHour: Record<number, Record<string, number>>
+  }
+  contentPatterns: {
+    topKeywords: Array<{ keyword: string; score: number }>
+    emotionTrend: Record<string, number>
+    averageEmotionalScore: number
+    emotionalVolatility: number
+    contentVolumeByType: Record<string, number>
+  }
+}
+
+export interface EmotionalPsychology {
+  emotionalClusters: Record<string, {
+    size: number
+    avgEmotion: number
+    avgImportance: number
+    commonHours: number[]
+  }>
+  stressPeriods: string[]
+  emotionalStability: number
+  peakEmotionalHours: Record<number, number>
+  emotionalRecoveryTime: number
+}
+
+export interface PersonalizationRecommendations {
+  immediate: {
+    optimalWorkHours: string[]
+    contentSuggestions: string[]
+    socialActivities: string[]
+    wellnessTips: string[]
+  }
+  longterm: {
+    hobbyDevelopment: string[]
+    careerDirection: string[]
+    relationshipImprovement: string[]
+    personalGrowth: string[]
+  }
+}
+
+export interface PersonalAnalysisResult {
+  dataSummary: {
+    totalFilesProcessed: number
+    dataTypes: Record<string, number>
+    timeRange: {
+      start: string | null
+      end: string | null
+    }
+  }
+  behaviorPatterns: BehaviorPatterns
+  deepAnalysis: {
+    emotionalPsychology: EmotionalPsychology
+  }
+  recommendations: PersonalizationRecommendations
+  processingTime: number
+  analysisDate: string
+}
+
+export interface PerformanceMetrics {
+  executionTime: number
+  memoryUsage: number
+  cacheHitRate: number
+  filesProcessed: number
+  analysisSteps: Array<{
+    step: string
+    duration: number
+    memoryDelta: number
+  }>
+  userExperience: {
+    perceivedPerformance: 'excellent' | 'good' | 'fair' | 'poor'
+    loadingTime: number
+    responsivenessScore: number
+  }
 }

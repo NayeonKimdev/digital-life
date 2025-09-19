@@ -23,6 +23,7 @@ import { SUPPORTED_FILE_TYPES } from '@/constants'
 import { UploadedFile } from '@/types'
 import ObjectDetectionVisualizer from './ObjectDetectionVisualizer'
 import AdvancedAnalysisViewer from './AdvancedAnalysisViewer'
+import { qwenOCRService } from '@/utils/qwenOCR'
 
 interface FileUploadProps {
   onFilesUploaded: (files: UploadedFile[]) => void
@@ -35,6 +36,8 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [selectedImageForDetection, setSelectedImageForDetection] = useState<UploadedFile | null>(null)
   const [selectedImageForAdvancedAnalysis, setSelectedImageForAdvancedAnalysis] = useState<UploadedFile | null>(null)
+  const [selectedImageForTextRecognition, setSelectedImageForTextRecognition] = useState<UploadedFile | null>(null)
+  const [showPerformanceStats, setShowPerformanceStats] = useState(false)
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     try {
@@ -200,6 +203,13 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
               
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setShowPerformanceStats(!showPerformanceStats)}
+                  className={`p-2 rounded ${showPerformanceStats ? 'bg-green-100 text-green-600' : 'text-gray-400 hover:text-gray-600'}`}
+                  title="OCR 성능 통계 보기"
+                >
+                  📊
+                </button>
+                <button
                   onClick={() => setShowImagePreviews(!showImagePreviews)}
                   className={`p-2 rounded ${showImagePreviews ? 'bg-primary-100 text-primary-600' : 'text-gray-400 hover:text-gray-600'}`}
                 >
@@ -208,6 +218,50 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                 <span className="text-sm text-gray-500">이미지 미리보기</span>
               </div>
             </div>
+
+            {/* 성능 통계 패널 */}
+            {showPerformanceStats && (
+              <div className="mb-6 bg-gradient-to-r from-blue-50 to-green-50 p-4 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-3 flex items-center">
+                  📊 OCR 성능 통계
+                  <button
+                    onClick={() => qwenOCRService.clearCache()}
+                    className="ml-auto text-xs bg-red-100 text-red-600 px-2 py-1 rounded hover:bg-red-200"
+                  >
+                    캐시 클리어
+                  </button>
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-3 rounded-lg">
+                    <div className="text-sm text-gray-600">총 요청 수</div>
+                    <div className="text-xl font-bold text-blue-600">
+                      {qwenOCRService.getPerformanceStats().totalRequests}
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg">
+                    <div className="text-sm text-gray-600">Qwen2.5-VL 사용률</div>
+                    <div className="text-xl font-bold text-green-600">
+                      {qwenOCRService.getPerformanceStats().qwenUsageRate}
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg">
+                    <div className="text-sm text-gray-600">캐시 적중률</div>
+                    <div className="text-xl font-bold text-purple-600">
+                      {qwenOCRService.getPerformanceStats().cacheHitRate}
+                    </div>
+                  </div>
+                  <div className="bg-white p-3 rounded-lg">
+                    <div className="text-sm text-gray-600">평균 처리 시간</div>
+                    <div className="text-xl font-bold text-orange-600">
+                      {qwenOCRService.getPerformanceStats().averageProcessingTime.toFixed(0)}ms
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-gray-500">
+                  서비스 상태: {qwenOCRService.getServiceStatus().available ? '🟢 Qwen2.5-VL 사용 가능' : '🟡 폴백 모드 (Tesseract.js)'}
+                </div>
+              </div>
+            )}
 
             {/* 파일 목록 */}
             {viewMode === 'grid' ? (
@@ -218,7 +272,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     className={`
-                      relative group cursor-pointer rounded-lg border-2 transition-all duration-200
+                      relative group cursor-pointer rounded-lg border-2 transition-all duration-200 min-h-[140px]
                       ${selectedFiles.has(file.id) 
                         ? 'border-primary-500 bg-primary-50' 
                         : 'border-gray-200 hover:border-gray-300'
@@ -261,7 +315,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                     </div>
 
                     {/* 파일 정보 */}
-                    <div className="p-2">
+                    <div className="p-3 pb-2">
                       <p className="text-xs font-medium truncate" title={file.name}>
                         {file.name}
                       </p>
@@ -269,18 +323,30 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                         {(file.size / 1024 / 1024).toFixed(1)} MB
                       </p>
                       {file.status === 'completed' && (
-                        <div className="flex items-center justify-between mt-1">
-                          <CheckCircleIcon className="w-4 h-4 text-green-500" />
-                          <div className="flex gap-1">
+                        <div className="flex items-center gap-2 mt-2">
+                          <CheckCircleIcon className="w-4 h-4 text-green-500 flex-shrink-0" />
+                          <div className="flex gap-1 flex-wrap">
+                            {file.textRecognitionResult && file.textRecognitionResult.text.trim() && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForTextRecognition(file)
+                                }}
+                                className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded hover:bg-green-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
+                                title={`텍스트 인식 결과 보기 (품질: ${file.textRecognitionResult?.qualityAssessment?.overallScore || 0}점)`}
+                              >
+                                📝
+                              </button>
+                            )}
                             {file.objectDetectionResult && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setSelectedImageForDetection(file)
                                 }}
-                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
                               >
-                                객체 {file.objectDetectionResult.objects.length}개
+                                🔍 {file.objectDetectionResult.objects.length}
                               </button>
                             )}
                             {file.advancedAnalysisResult && (
@@ -289,9 +355,9 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                                   e.stopPropagation()
                                   setSelectedImageForAdvancedAnalysis(file)
                                 }}
-                                className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                                className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
                               >
-                                고급 분석
+                                ⚡
                               </button>
                             )}
                           </div>
@@ -377,16 +443,28 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                       {file.status === 'completed' && (
                         <div className="flex items-center gap-2">
                           <CheckCircleIcon className="w-5 h-5 text-green-500" />
-                          <div className="flex gap-1">
+                          <div className="flex gap-1 flex-wrap">
+                            {file.textRecognitionResult && file.textRecognitionResult.text.trim() && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForTextRecognition(file)
+                                }}
+                                className="text-xs bg-green-100 text-green-600 px-2 py-1 rounded hover:bg-green-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
+                                title={`텍스트 인식 결과 보기 (품질: ${file.textRecognitionResult?.qualityAssessment?.overallScore || 0}점)`}
+                              >
+                                📝
+                              </button>
+                            )}
                             {file.objectDetectionResult && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   setSelectedImageForDetection(file)
                                 }}
-                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                                className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded hover:bg-blue-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
                               >
-                                객체 {file.objectDetectionResult.objects.length}개
+                                🔍 {file.objectDetectionResult.objects.length}
                               </button>
                             )}
                             {file.advancedAnalysisResult && (
@@ -395,9 +473,9 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                                   e.stopPropagation()
                                   setSelectedImageForAdvancedAnalysis(file)
                                 }}
-                                className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors"
+                                className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
                               >
-                                고급 분석
+                                ⚡
                               </button>
                             )}
                           </div>
@@ -454,6 +532,115 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                 objects={selectedImageForDetection.objectDetectionResult.objects}
                 imageSize={selectedImageForDetection.objectDetectionResult.imageSize}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 텍스트 인식 결과 모달 */}
+      {selectedImageForTextRecognition && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">텍스트 인식 결과</h3>
+                <button
+                  onClick={() => setSelectedImageForTextRecognition(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {/* 이미지 미리보기 */}
+                <div className="flex gap-6">
+                  <div className="flex-shrink-0">
+                    <img
+                      src={selectedImageForTextRecognition.preview!}
+                      alt={selectedImageForTextRecognition.name}
+                      className="w-64 h-64 object-cover rounded-lg border"
+                    />
+                  </div>
+                  
+                  {/* 텍스트 결과 */}
+                  <div className="flex-1">
+                    <h4 className="text-lg font-semibold mb-3">인식된 텍스트</h4>
+                    <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                      <p className="text-sm whitespace-pre-wrap">
+                        {selectedImageForTextRecognition.textRecognitionResult?.text || '텍스트를 찾을 수 없습니다.'}
+                      </p>
+                    </div>
+                    
+                    {/* 품질 평가 */}
+                    {selectedImageForTextRecognition.textRecognitionResult?.qualityAssessment && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-blue-50 p-3 rounded-lg">
+                          <div className="text-sm text-blue-600 font-medium">전체 품질 점수</div>
+                          <div className="text-2xl font-bold text-blue-800">
+                            {selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.overallScore}/100
+                          </div>
+                        </div>
+                        <div className="bg-green-50 p-3 rounded-lg">
+                          <div className="text-sm text-green-600 font-medium">평균 신뢰도</div>
+                          <div className="text-2xl font-bold text-green-800">
+                            {Math.round(selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.averageConfidence * 100)}%
+                          </div>
+                        </div>
+                        <div className="bg-purple-50 p-3 rounded-lg">
+                          <div className="text-sm text-purple-600 font-medium">텍스트 길이</div>
+                          <div className="text-2xl font-bold text-purple-800">
+                            {selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.textLength}자
+                          </div>
+                        </div>
+                        <div className="bg-orange-50 p-3 rounded-lg">
+                          <div className="text-sm text-orange-600 font-medium">단어 수</div>
+                          <div className="text-2xl font-bold text-orange-800">
+                            {selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.wordCount}개
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* 언어 정보 */}
+                    {selectedImageForTextRecognition.textRecognitionResult?.qualityAssessment && (
+                      <div className="mt-4">
+                        <h5 className="text-sm font-medium mb-2">언어 구성</h5>
+                        <div className="flex gap-2">
+                          {selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.hasKorean && (
+                            <span className="px-2 py-1 bg-red-100 text-red-800 rounded text-xs">한국어</span>
+                          )}
+                          {selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.hasEnglish && (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">영어</span>
+                          )}
+                          {selectedImageForTextRecognition.textRecognitionResult.qualityAssessment.hasNumbers && (
+                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">숫자</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* 단어별 상세 정보 */}
+                {selectedImageForTextRecognition.textRecognitionResult?.words && selectedImageForTextRecognition.textRecognitionResult.words.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold mb-3">단어별 분석</h4>
+                    <div className="max-h-40 overflow-y-auto">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {selectedImageForTextRecognition.textRecognitionResult.words.map((word, index) => (
+                          <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                            <span className="text-sm font-medium">{word.text}</span>
+                            <span className="text-xs text-gray-600">
+                              {Math.round(word.confidence * 100)}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
