@@ -17,6 +17,25 @@ interface AnalysisDashboardProps {
 export default function AnalysisDashboard({ files }: AnalysisDashboardProps) {
   const { analysisData, isAnalyzing, analyzeFiles } = useAnalysis()
 
+  // 통합 분석 데이터 추출
+  const comprehensiveAnalysisData = files
+    .filter(file => file.comprehensiveMetadata)
+    .map(file => file.comprehensiveMetadata)
+
+  // 통합 분석 통계 계산
+  const comprehensiveStats = {
+    totalImages: comprehensiveAnalysisData.length,
+    totalPeople: comprehensiveAnalysisData.reduce((sum, data) => sum + data.peopleDetection.totalCount, 0),
+    totalObjects: comprehensiveAnalysisData.reduce((sum, data) => sum + data.objectDetection.totalObjects, 0),
+    imagesWithText: comprehensiveAnalysisData.filter(data => data.textAnalysis.hasText).length,
+    averageConfidence: comprehensiveAnalysisData.length > 0 
+      ? comprehensiveAnalysisData.reduce((sum, data) => sum + data.processingInfo.confidence.overall, 0) / comprehensiveAnalysisData.length 
+      : 0,
+    averageProcessingTime: comprehensiveAnalysisData.length > 0
+      ? comprehensiveAnalysisData.reduce((sum, data) => sum + data.processingInfo.processingTime, 0) / comprehensiveAnalysisData.length
+      : 0
+  }
+
   useEffect(() => {
     // 파일 데이터를 분석하여 인사이트 생성
     analyzeFiles(files)
@@ -45,18 +64,52 @@ export default function AnalysisDashboard({ files }: AnalysisDashboardProps) {
       {/* Header */}
       <div className="text-center">
         <h2 className="text-4xl font-bold text-gray-900 mb-4">
-          {analysisData?.imageData ? "이미지 취향 분석 결과" :
+          {comprehensiveStats.totalImages > 0 ? "🎯 종합 이미지 분석 결과" :
+           analysisData?.imageData ? "이미지 취향 분석 결과" :
            analysisData?.totalLikes ? "Instagram 좋아요 분석 결과" : 
            analysisData?.totalMessages ? "카카오톡 채팅 분석 결과" : 
            "나의 디지털 라이프 분석 결과"}
         </h2>
         <p className="text-xl text-gray-600">
-          {files.length}개의 파일을 분석한 결과입니다
+          {comprehensiveStats.totalImages > 0 
+            ? `${comprehensiveStats.totalImages}장의 이미지를 종합적으로 분석한 결과입니다`
+            : `${files.length}개의 파일을 분석한 결과입니다`
+          }
           {analysisData?.imageData && ` (총 ${analysisData.imageData.totalImages}장 이미지 분석)`}
           {analysisData?.totalLikes && ` (총 ${analysisData.totalLikes}개 좋아요 분석)`}
           {analysisData?.totalMessages && ` (총 ${analysisData.totalMessages}개 메시지 분석)`}
         </p>
       </div>
+
+      {/* 통합 분석 통계 카드 */}
+      {comprehensiveStats.totalImages > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-xl text-center">
+            <div className="text-2xl font-bold text-blue-700">{comprehensiveStats.totalImages}</div>
+            <div className="text-sm text-blue-600">분석된 이미지</div>
+          </div>
+          <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-xl text-center">
+            <div className="text-2xl font-bold text-green-700">{comprehensiveStats.totalPeople}</div>
+            <div className="text-sm text-green-600">감지된 사람</div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-xl text-center">
+            <div className="text-2xl font-bold text-purple-700">{comprehensiveStats.totalObjects}</div>
+            <div className="text-sm text-purple-600">감지된 객체</div>
+          </div>
+          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-xl text-center">
+            <div className="text-2xl font-bold text-yellow-700">{comprehensiveStats.imagesWithText}</div>
+            <div className="text-sm text-yellow-600">텍스트 포함</div>
+          </div>
+          <div className="bg-gradient-to-br from-pink-50 to-pink-100 p-4 rounded-xl text-center">
+            <div className="text-2xl font-bold text-pink-700">{Math.round(comprehensiveStats.averageConfidence)}%</div>
+            <div className="text-sm text-pink-600">평균 신뢰도</div>
+          </div>
+          <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-4 rounded-xl text-center">
+            <div className="text-2xl font-bold text-indigo-700">{Math.round(comprehensiveStats.averageProcessingTime)}ms</div>
+            <div className="text-sm text-indigo-600">평균 처리시간</div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">

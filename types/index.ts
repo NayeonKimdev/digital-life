@@ -41,6 +41,8 @@ export interface UploadedFile {
   textRecognitionResult?: TextRecognitionResult
   advancedAnalysisResult?: any // AdvancedImageAnalysis 타입은 utils/advancedImageAnalysis.ts에서 정의됨
   isImage?: boolean
+  // 🆕 통합 분석 결과
+  comprehensiveMetadata?: any // ComprehensiveImageMetadata 타입
 }
 
 // 인스타그램 좋아요 데이터 구조

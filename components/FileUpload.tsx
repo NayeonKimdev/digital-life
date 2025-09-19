@@ -37,6 +37,7 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
   const [selectedImageForDetection, setSelectedImageForDetection] = useState<UploadedFile | null>(null)
   const [selectedImageForAdvancedAnalysis, setSelectedImageForAdvancedAnalysis] = useState<UploadedFile | null>(null)
   const [selectedImageForTextRecognition, setSelectedImageForTextRecognition] = useState<UploadedFile | null>(null)
+  const [selectedImageForComprehensiveAnalysis, setSelectedImageForComprehensiveAnalysis] = useState<UploadedFile | null>(null)
   const [showPerformanceStats, setShowPerformanceStats] = useState(false)
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -360,6 +361,18 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                                 ⚡
                               </button>
                             )}
+                            {file.comprehensiveMetadata && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForComprehensiveAnalysis(file)
+                                }}
+                                className="text-xs bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 px-2 py-1 rounded hover:from-blue-200 hover:to-purple-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
+                                title={`종합 분석 결과 보기 (신뢰도: ${file.comprehensiveMetadata.processingInfo.confidence.overall}%)`}
+                              >
+                                📊
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -476,6 +489,18 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
                                 className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded hover:bg-purple-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
                               >
                                 ⚡
+                              </button>
+                            )}
+                            {file.comprehensiveMetadata && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedImageForComprehensiveAnalysis(file)
+                                }}
+                                className="text-xs bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 px-2 py-1 rounded hover:from-blue-200 hover:to-purple-200 transition-colors min-w-[24px] h-6 flex items-center justify-center"
+                                title={`종합 분석 결과 보기 (신뢰도: ${file.comprehensiveMetadata.processingInfo.confidence.overall}%)`}
+                              >
+                                📊
                               </button>
                             )}
                           </div>
@@ -662,9 +687,205 @@ export default function FileUpload({ onFilesUploaded }: FileUploadProps) {
               </div>
               
               <AdvancedAnalysisViewer
-                imageUrl={selectedImageForAdvancedAnalysis.preview!}
-                analysis={selectedImageForAdvancedAnalysis.advancedAnalysisResult}
+                analysisResult={selectedImageForAdvancedAnalysis.advancedAnalysisResult}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 통합 분석 모달 */}
+      {selectedImageForComprehensiveAnalysis && selectedImageForComprehensiveAnalysis.comprehensiveMetadata && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-7xl w-full max-h-[95vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">🎯 종합 이미지 분석 결과</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    신뢰도: {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.processingInfo.confidence.overall}% | 
+                    처리시간: {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.processingInfo.processingTime.toFixed(0)}ms
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedImageForComprehensiveAnalysis(null)}
+                  className="p-2 hover:bg-gray-100 rounded-full"
+                >
+                  <XMarkIcon className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 이미지 미리보기 */}
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <img
+                      src={selectedImageForComprehensiveAnalysis.preview!}
+                      alt={selectedImageForComprehensiveAnalysis.name}
+                      className="w-full h-64 object-cover rounded-lg"
+                    />
+                  </div>
+                  
+                  {/* 기본 정보 */}
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <h4 className="font-semibold text-blue-900 mb-3">📄 기본 정보</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">파일명:</span>
+                        <span className="font-medium">{selectedImageForComprehensiveAnalysis.comprehensiveMetadata.fileInfo.name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">크기:</span>
+                        <span className="font-medium">{(selectedImageForComprehensiveAnalysis.comprehensiveMetadata.fileInfo.size / 1024 / 1024).toFixed(2)} MB</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">해상도:</span>
+                        <span className="font-medium">
+                          {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.imageProperties.dimensions.width} × 
+                          {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.imageProperties.dimensions.height}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">비율:</span>
+                        <span className="font-medium">{selectedImageForComprehensiveAnalysis.comprehensiveMetadata.imageProperties.dimensions.aspectRatio.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 분석 결과 */}
+                <div className="space-y-4">
+                  {/* 사람 인식 */}
+                  {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.peopleDetection.totalCount > 0 && (
+                    <div className="bg-green-50 rounded-lg p-4">
+                      <h4 className="font-semibold text-green-900 mb-3">👥 사람 인식 ({selectedImageForComprehensiveAnalysis.comprehensiveMetadata.peopleDetection.totalCount}명)</h4>
+                      <div className="space-y-2">
+                        {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.peopleDetection.people.map((person: any, index: number) => (
+                          <div key={index} className="bg-white rounded p-3 text-sm">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="font-medium">사람 {index + 1}</span>
+                              <span className="text-green-600">신뢰도: {Math.round(person.confidence * 100)}%</span>
+                            </div>
+                            {person.demographics.estimatedAge && (
+                              <div className="text-gray-600">나이: {person.demographics.estimatedAge.range}</div>
+                            )}
+                            {person.demographics.estimatedGender && (
+                              <div className="text-gray-600">성별: {person.demographics.estimatedGender.gender}</div>
+                            )}
+                            {person.emotions.length > 0 && (
+                              <div className="text-gray-600">
+                                감정: {person.emotions.map((e: any) => e.emotion).join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 객체 인식 */}
+                  {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.objectDetection.totalObjects > 0 && (
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <h4 className="font-semibold text-blue-900 mb-3">🔍 객체 인식 ({selectedImageForComprehensiveAnalysis.comprehensiveMetadata.objectDetection.totalObjects}개)</h4>
+                      <div className="space-y-2">
+                        {Object.entries(selectedImageForComprehensiveAnalysis.comprehensiveMetadata.objectDetection.categories).map(([category, objects]) => {
+                          if (Array.isArray(objects) && objects.length > 0) {
+                            return (
+                              <div key={category} className="bg-white rounded p-3 text-sm">
+                                <div className="font-medium text-gray-800 mb-1">{category}:</div>
+                                <div className="text-gray-600">
+                                  {objects.map((obj: any, index: number) => (
+                                    <span key={index} className="inline-block bg-gray-100 px-2 py-1 rounded mr-1 mb-1">
+                                      {obj.type || obj.species || obj.equipment || obj.item}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )
+                          }
+                          return null
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 텍스트 인식 */}
+                  {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.textAnalysis.hasText && (
+                    <div className="bg-yellow-50 rounded-lg p-4">
+                      <h4 className="font-semibold text-yellow-900 mb-3">📝 텍스트 인식</h4>
+                      <div className="bg-white rounded p-3 text-sm">
+                        <div className="mb-2">
+                          <span className="font-medium">총 텍스트 길이:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.textAnalysis.totalTextLength}자
+                        </div>
+                        <div className="mb-2">
+                          <span className="font-medium">언어:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.textAnalysis.languages.map((l: any) => l.language).join(', ')}
+                        </div>
+                        <div className="bg-gray-50 p-2 rounded text-xs">
+                          {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.textAnalysis.textBlocks.map((block: any) => block.text).join(' ')}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 장면 분석 */}
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <h4 className="font-semibold text-purple-900 mb-3">🏞️ 장면 분석</h4>
+                    <div className="bg-white rounded p-3 text-sm space-y-2">
+                      <div>
+                        <span className="font-medium">위치:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.sceneAnalysis.setting.location}
+                      </div>
+                      <div>
+                        <span className="font-medium">환경:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.sceneAnalysis.environment.type}
+                      </div>
+                      <div>
+                        <span className="font-medium">주요 활동:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.sceneAnalysis.activity.mainActivity}
+                      </div>
+                      <div>
+                        <span className="font-medium">분위기:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.sceneAnalysis.activity.atmosphere}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 색상 분석 */}
+                  <div className="bg-pink-50 rounded-lg p-4">
+                    <h4 className="font-semibold text-pink-900 mb-3">🎨 색상 분석</h4>
+                    <div className="bg-white rounded p-3 text-sm space-y-2">
+                      <div>
+                        <span className="font-medium">분위기:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.colorAnalysis.mood}
+                      </div>
+                      <div>
+                        <span className="font-medium">밝기:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.colorAnalysis.brightness}%
+                      </div>
+                      <div>
+                        <span className="font-medium">대비:</span> {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.colorAnalysis.contrast}%
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.colorAnalysis.dominantColors.slice(0, 3).map((color: any, index: number) => (
+                          <div key={index} className="flex items-center gap-1">
+                            <div 
+                              className="w-4 h-4 rounded border"
+                              style={{ backgroundColor: color.color }}
+                            ></div>
+                            <span className="text-xs">{color.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 개인화 분석 */}
+                  {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.personalAnalysis && (
+                    <div className="bg-indigo-50 rounded-lg p-4">
+                      <h4 className="font-semibold text-indigo-900 mb-3">💡 개인화 분석</h4>
+                      <div className="bg-white rounded p-3 text-sm space-y-2">
+                        {selectedImageForComprehensiveAnalysis.comprehensiveMetadata.personalAnalysis.suggestions.recommendations.map((rec: any, index: number) => (
+                          <div key={index} className="text-gray-700">• {rec}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
