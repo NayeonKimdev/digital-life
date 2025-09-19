@@ -155,7 +155,7 @@ class QwenOCRService {
           'X-Title': 'Digital Life OCR Service'
         },
         body: JSON.stringify({
-          model: 'qwen/qwen2.5-vl-7b-instruct',
+          model: 'qwen/qwen2.5-vl-72b-instruct:free',
           messages: [
             {
               role: 'user',
@@ -312,7 +312,7 @@ class QwenOCRService {
               'X-Title': 'Digital Life OCR Service'
             },
             body: JSON.stringify({
-              model: 'qwen/qwen2.5-vl-7b-instruct',
+              model: 'qwen/qwen2.5-vl-72b-instruct:free',
               messages: [
                 {
                   role: 'user',
@@ -1372,7 +1372,7 @@ export const QwenOCRUtils = {
       '1. .env.local 파일에 API 키 설정: NEXT_PUBLIC_OPENROUTER_API_KEY=your_api_key',
       '2. API 엔드포인트 설정: NEXT_PUBLIC_API_ENDPOINT=https://openrouter.ai/api/v1/chat/completions',
       '3. OpenRouter 계정에서 API 키 발급 (https://openrouter.ai/)',
-      '4. Qwen2.5-VL 모델 사용: qwen/qwen2.5-vl-7b-instruct',
+      '4. Qwen2.5-VL 모델 사용: qwen/qwen2.5-vl-72b-instruct:free',
       '5. 이미지는 Base64로 인코딩하여 전송',
       '6. 응답은 JSON 형식으로 파싱하여 텍스트 추출'
     ],

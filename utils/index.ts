@@ -17,7 +17,8 @@ import {
 } from '@/types'
 
 // 새로운 분석 시스템 export
-export { personalAnalysisSystem, PersonalAnalysisResult } from './personalDataAnalyzer'
+export { personalAnalysisSystem } from './personalDataAnalyzer'
+export type { PersonalAnalysisResult } from './personalDataAnalyzer'
 export { optimizedAnalysisPipeline } from './optimizedAnalysisPipeline'
 export { integratedPerformanceManager } from './performanceMonitor'
 

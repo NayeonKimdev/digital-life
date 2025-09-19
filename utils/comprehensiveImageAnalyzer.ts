@@ -44,22 +44,24 @@ export class ComprehensiveImageAnalyzer {
       const imageProperties = await this.extractImageProperties(file)
       console.log('🖼️ 이미지 속성 추출 완료')
 
-      // 3. 병렬로 모든 분석 실행 (성능 최적화) - 객체 인식 비활성화
+      // 3. 텍스트 분석 먼저 실행 (다른 분석에서 재사용)
+      const textResult = await this.analyzeText(file)
+      console.log('📝 텍스트 분석 완료')
+
+      // 4. 나머지 분석들을 병렬로 실행 (텍스트 결과 전달)
       const [
         colorAnalysis,
         sceneAnalysis,
-        textAnalysis,
         brandDetection,
         aestheticAnalysis
       ] = await Promise.allSettled([
         this.analyzeColors(file),
         this.analyzeScene(file),
-        this.analyzeText(file),
-        this.detectBrands(file),
+        this.detectBrands(file, textResult),
         this.analyzeAesthetics(file)
       ])
 
-      // 4. 결과 통합
+      // 5. 결과 통합
       const metadata: ComprehensiveImageMetadata = {
         fileInfo,
         imageProperties,
@@ -67,7 +69,7 @@ export class ComprehensiveImageAnalyzer {
         peopleDetection: this.getDefaultPeopleDetection(), // 비활성화
         objectDetection: this.getDefaultObjectDetection(), // 비활성화
         sceneAnalysis: this.getValueOrDefault(sceneAnalysis, this.getDefaultSceneAnalysis()),
-        textAnalysis: this.getValueOrDefault(textAnalysis, this.getDefaultTextAnalysis()),
+        textAnalysis: textResult, // 이미 실행된 텍스트 분석 결과 사용
         brandDetection: this.getValueOrDefault(brandDetection, { brands: [] }),
         aestheticAnalysis: this.getValueOrDefault(aestheticAnalysis, this.getDefaultAestheticAnalysis()),
         processingInfo: {
@@ -76,28 +78,28 @@ export class ComprehensiveImageAnalyzer {
           servicesUsed: this.getServicesUsed([
             colorAnalysis,
             sceneAnalysis,
-            textAnalysis,
+            { status: 'fulfilled', value: textResult },
             brandDetection,
             aestheticAnalysis
           ]),
           confidence: this.calculateOverallConfidence([
             colorAnalysis,
             sceneAnalysis,
-            textAnalysis,
+            { status: 'fulfilled', value: textResult },
             brandDetection,
             aestheticAnalysis
           ]),
           errors: this.extractErrors([
             colorAnalysis,
             sceneAnalysis,
-            textAnalysis,
+            { status: 'fulfilled', value: textResult },
             brandDetection,
             aestheticAnalysis
           ])
         }
       }
 
-      // 5. 개인화 분석 (선택적)
+      // 6. 개인화 분석 (선택적)
       try {
         metadata.personalAnalysis = await this.generatePersonalAnalysis(metadata)
       } catch (error) {
@@ -393,14 +395,19 @@ export class ComprehensiveImageAnalyzer {
     }
   }
 
-  // 8. 브랜드/로고 인식
-  private async detectBrands(file: File): Promise<ComprehensiveImageMetadata['brandDetection']> {
+  // 8. 브랜드/로고 인식 (텍스트 분석 결과 재사용)
+  private async detectBrands(file: File, textResult?: any): Promise<ComprehensiveImageMetadata['brandDetection']> {
     try {
-      // 실제로는 브랜드 인식 모델이나 API 필요
-      // 현재는 텍스트에서 브랜드명 추출하는 방식으로 시뮬레이션
-      const textResult = await recognizeTextInImage(file)
-      const brands = this.extractBrandsFromText(textResult.text)
+      // 텍스트 분석 결과가 있으면 재사용, 없으면 새로 실행
+      let text = ''
+      if (textResult && textResult.text) {
+        text = textResult.text
+      } else {
+        const result = await recognizeTextInImage(file)
+        text = result.text
+      }
       
+      const brands = this.extractBrandsFromText(text)
       return { brands }
     } catch (error) {
       console.error('브랜드 인식 실패:', error)

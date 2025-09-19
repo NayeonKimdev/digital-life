@@ -47,6 +47,7 @@ class QwenTextRecognitionService {
   private apiKey: string | undefined
   private isAvailable: boolean = false
   private cache: Map<string, TextRecognitionResult> = new Map()
+  private pendingRequests: Map<string, Promise<TextRecognitionResult>> = new Map()
 
   constructor() {
     // OpenRouter API 설정
@@ -85,35 +86,57 @@ class QwenTextRecognitionService {
       
       // 캐시 확인
       if (this.cache.has(fileHash)) {
-        console.log('🚀 캐시에서 결과 반환')
+        console.log('🚀 캐시에서 결과 반환:', file.name)
         return this.cache.get(fileHash)!
       }
 
-      // 이미지를 Base64로 변환 (최적화된 크기로)
-      const base64Image = await this.optimizeImageForOCR(file)
-      console.log('📷 이미지 Base64 변환 완료, 크기:', base64Image.length)
+      // 진행 중인 요청 확인 (중복 요청 방지)
+      if (this.pendingRequests.has(fileHash)) {
+        console.log('⏳ 이미 진행 중인 요청 대기:', file.name)
+        return await this.pendingRequests.get(fileHash)!
+      }
 
-      // Qwen2.5-VL API 호출
-      const result = await this.callQwenAPI(base64Image, file.type)
-      
-      // 결과 검증 및 후처리
-      const processedResult = this.processQwenResult(result, performance.now() - startTime)
+      // 진행 중인 요청으로 등록
+      const requestPromise = this.processImageRequest(file, fileHash, startTime)
+      this.pendingRequests.set(fileHash, requestPromise)
 
-      // 결과 캐싱
-      this.cache.set(fileHash, processedResult)
-
-      console.log('✅ Qwen2.5-VL 텍스트 인식 완료:', {
-        processingTime: processedResult.processingTime.toFixed(0) + 'ms',
-        textLength: processedResult.text.length,
-        qualityScore: processedResult.qualityAssessment.overallScore,
-        topic: processedResult.imageAnalysis?.topic
-      })
-
-      return processedResult
+      try {
+        const result = await requestPromise
+        return result
+      } finally {
+        // 요청 완료 후 pending에서 제거
+        this.pendingRequests.delete(fileHash)
+      }
     } catch (error) {
       console.error('❌ Qwen2.5-VL 텍스트 인식 실패:', error)
       throw new Error(`텍스트 인식 실패: ${(error as Error).message}`)
     }
+  }
+
+  // 실제 이미지 처리 로직
+  private async processImageRequest(file: File, fileHash: string, startTime: number): Promise<TextRecognitionResult> {
+    // 이미지를 Base64로 변환 (최적화된 크기로)
+    const base64Image = await this.optimizeImageForOCR(file)
+    console.log('📷 이미지 Base64 변환 완료, 크기:', base64Image.length)
+
+    // Qwen2.5-VL API 호출
+    const result = await this.callQwenAPI(base64Image, file.type)
+    
+    // 결과 검증 및 후처리
+    const processedResult = this.processQwenResult(result, performance.now() - startTime)
+
+    // 결과 캐싱 (크기 제한 적용)
+    this.cache.set(fileHash, processedResult)
+    this.limitCacheSize()
+
+    console.log('✅ Qwen2.5-VL 텍스트 인식 완료:', {
+      processingTime: processedResult.processingTime.toFixed(0) + 'ms',
+      textLength: processedResult.text.length,
+      qualityScore: processedResult.qualityAssessment.overallScore,
+      topic: processedResult.imageAnalysis?.topic
+    })
+
+    return processedResult
   }
 
   // Qwen2.5-VL API 호출
@@ -126,7 +149,7 @@ class QwenTextRecognitionService {
         console.log(`📤 Qwen2.5-VL API 요청 시도 ${currentRetry + 1}/${maxRetries}...`)
 
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 120000) // 120초 타임아웃으로 증가
+        const timeoutId = setTimeout(() => controller.abort(), 120000) // 120초 타임아웃으로 복원
 
         const response = await fetch(this.apiEndpoint, {
           method: 'POST',
@@ -194,8 +217,9 @@ Response format (JSON):
         }
         
         if (currentRetry < maxRetries) {
-          console.log('🔄 1초 후 재시도...')
-          await new Promise(resolve => setTimeout(resolve, 1000))
+          const delay = Math.min(1000 * Math.pow(2, currentRetry), 5000) // 지수 백오프, 최대 5초
+          console.log(`🔄 ${delay}ms 후 재시도...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
         } else {
           throw error
         }
@@ -410,7 +434,7 @@ Response format (JSON):
           return
         }
 
-        // 이미지 크기 제한 (최대 800px로 더 작게)
+        // 이미지 크기 제한 (원래대로 복원)
         const maxSize = 800
         let { width, height } = img
         
@@ -426,7 +450,7 @@ Response format (JSON):
         // 이미지 그리기
         ctx.drawImage(img, 0, 0, width, height)
         
-        // JPEG 품질 설정 (70% 품질로 더 압축)
+        // JPEG 품질 설정 (원래대로 복원)
         const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.7)
         const base64 = optimizedBase64.split(',')[1]
         
@@ -453,16 +477,42 @@ Response format (JSON):
   // 캐시 클리어
   clearCache(): void {
     this.cache.clear()
+    this.pendingRequests.clear()
     console.log('🗑️ Qwen2.5-VL 캐시 클리어 완료')
+  }
+
+  // 캐시 크기 제한 (메모리 최적화)
+  private limitCacheSize(): void {
+    const maxCacheSize = 10 // 최대 10개 파일만 캐시
+    if (this.cache.size > maxCacheSize) {
+      const entries = Array.from(this.cache.entries())
+      // 가장 오래된 항목들 제거
+      const toRemove = entries.slice(0, this.cache.size - maxCacheSize)
+      toRemove.forEach(([key]) => this.cache.delete(key))
+      console.log(`🗑️ 캐시 크기 제한: ${toRemove.length}개 항목 제거`)
+    }
   }
 
   // 성능 통계
   getPerformanceStats() {
     return {
       cacheSize: this.cache.size,
+      pendingRequests: this.pendingRequests.size,
       isAvailable: this.isAvailable,
-      endpoint: this.apiEndpoint
+      endpoint: this.apiEndpoint,
+      memoryUsage: this.estimateMemoryUsage()
     }
+  }
+
+  // 메모리 사용량 추정
+  private estimateMemoryUsage(): number {
+    let totalSize = 0
+    this.cache.forEach((result) => {
+      // 텍스트 크기 + 메타데이터 크기 추정
+      totalSize += result.text.length * 2 // UTF-16 문자당 2바이트
+      totalSize += JSON.stringify(result).length
+    })
+    return Math.round(totalSize / 1024) // KB 단위
   }
 }
 
@@ -507,7 +557,7 @@ function validateImageFile(file: File): void {
   })
 }
 
-// 디버깅 유틸리티
+  // 디버깅 유틸리티
 export const OCRDebugUtils = {
   // 서비스 상태 확인
   checkServiceStatus: () => {
@@ -527,6 +577,20 @@ export const OCRDebugUtils = {
   clearCache: () => {
     textRecognitionService.clearCache()
   },
+
+  // 진행 중인 요청 확인
+  getPendingRequests: () => {
+    const stats = textRecognitionService.getPerformanceStats()
+    console.log('⏳ 진행 중인 요청:', stats.pendingRequests)
+    return stats.pendingRequests
+  },
+
+  // 메모리 사용량 확인
+  getMemoryUsage: () => {
+    const stats = textRecognitionService.getPerformanceStats()
+    console.log('💾 메모리 사용량:', stats.memoryUsage + 'KB')
+    return stats.memoryUsage
+  },
   
   // 설정 가이드 출력
   showSetupGuide: () => {
@@ -537,7 +601,7 @@ export const OCRDebugUtils = {
         '1. .env.local 파일에 API 키 설정: NEXT_PUBLIC_OPENROUTER_API_KEY=your_api_key',
         '2. API 엔드포인트 설정: NEXT_PUBLIC_API_ENDPOINT=https://openrouter.ai/api/v1/chat/completions',
         '3. OpenRouter 계정에서 API 키 발급 (https://openrouter.ai/)',
-        '4. Qwen2.5-VL 모델 사용: qwen/qwen2.5-vl-7b-instruct',
+        '4. Qwen2.5-VL 모델 사용: qwen/qwen2.5-vl-72b-instruct:free',
         '5. 이미지는 Base64로 인코딩하여 전송',
         '6. 응답은 JSON 형식으로 파싱하여 텍스트 추출'
       ],
