@@ -276,7 +276,7 @@ class QwenOCRService {
     }
   }
 
-  // Qwen2.5-VL 모델 사용 (OpenRouter API 버전)
+  // Qwen2.5-VL 모델 사용 (개선된 타임아웃 및 재시도 로직)
   private async processWithQwen(file: File): Promise<QwenOCRResult> {
     const startTime = performance.now()
     
@@ -287,69 +287,107 @@ class QwenOCRService {
         throw new Error('OpenRouter API 키가 설정되지 않았습니다.')
       }
       
-      // 이미지를 Base64로 변환
-      const base64Image = await this.convertFileToBase64(file)
+      // 이미지를 Base64로 변환 (크기 제한 추가)
+      const base64Image = await this.convertFileToBase64WithOptimization(file)
       console.log('📷 이미지 Base64 변환 완료, 크기:', base64Image.length)
       
-      // OpenRouter API 요청 (간소화된 프롬프트)
-      const response = await fetch(this.apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Digital Life OCR Service'
-        },
-        body: JSON.stringify({
-          model: 'qwen/qwen2.5-vl-7b-instruct',
-          messages: [
-            {
-              role: 'user',
-              content: [
+      // 타임아웃 설정 단축 및 재시도 로직 추가
+      const maxRetries = 2
+      let currentRetry = 0
+      
+      while (currentRetry < maxRetries) {
+        try {
+          console.log(`📤 API 요청 시도 ${currentRetry + 1}/${maxRetries}...`)
+          
+          // AbortController로 더 짧은 타임아웃 설정
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 12000) // 12초로 단축
+          
+          const response = await fetch(this.apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json',
+              'HTTP-Referer': window.location.origin,
+              'X-Title': 'Digital Life OCR Service'
+            },
+            body: JSON.stringify({
+              model: 'qwen/qwen2.5-vl-7b-instruct',
+              messages: [
                 {
-                  type: 'text',
-                  text: '이미지에서 모든 텍스트를 추출해주세요. 한국어와 영어를 모두 인식해주세요.'
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:${file.type};base64,${base64Image}`
-                  }
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: '이미지의 모든 텍스트를 추출하세요. 한국어와 영어 모두 인식해주세요.'
+                    },
+                    {
+                      type: 'image_url',
+                      image_url: {
+                        url: `data:${file.type};base64,${base64Image}`
+                      }
+                    }
+                  ]
                 }
-              ]
-            }
-          ],
-          max_tokens: 1000,
-          temperature: 0.1
-        }),
-        signal: AbortSignal.timeout(30000) // 30초 타임아웃으로 단축
-      })
+              ],
+              max_tokens: 800, // 토큰 수 감소로 응답 시간 단축
+              temperature: 0.1
+            }),
+            signal: controller.signal
+          })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`OpenRouter API 요청 실패: ${response.status} - ${errorText}`)
+          clearTimeout(timeoutId)
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`OpenRouter API 요청 실패: ${response.status} - ${errorText}`)
+          }
+
+          const apiResult = await response.json()
+          const endTime = performance.now()
+          const processingTime = endTime - startTime
+
+          console.log('📥 API 응답 수신 성공:', {
+            시도횟수: currentRetry + 1,
+            처리시간: processingTime.toFixed(0) + 'ms'
+          })
+
+          // API 응답에서 텍스트 추출
+          const extractedText = this.extractTextFromResponse(apiResult)
+          
+          // 결과 변환 및 품질 평가
+          const qwenResult = this.transformOpenRouterResult(extractedText, processingTime)
+          
+          console.log('✅ OpenRouter Qwen2.5-VL OCR 완료:', {
+            processingTime: processingTime.toFixed(0) + 'ms',
+            textLength: qwenResult.text.length,
+            qualityScore: qwenResult.qualityAssessment.overallScore,
+            confidence: qwenResult.confidence
+          })
+
+          return qwenResult
+          
+        } catch (error: any) {
+          currentRetry++
+          
+          if (error.name === 'AbortError') {
+            console.warn(`⏰ 요청 타임아웃 (시도 ${currentRetry}/${maxRetries})`)
+          } else {
+            console.warn(`❌ API 요청 실패 (시도 ${currentRetry}/${maxRetries}):`, error.message)
+          }
+          
+          // 마지막 시도가 아니라면 잠시 대기 후 재시도
+          if (currentRetry < maxRetries) {
+            console.log('🔄 1초 후 재시도...')
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          } else {
+            throw error
+          }
+        }
       }
-
-      const apiResult = await response.json()
-      const endTime = performance.now()
-      const processingTime = endTime - startTime
-
-      console.log('📥 API 응답 수신:', apiResult)
-
-      // API 응답에서 텍스트 추출
-      const extractedText = this.extractTextFromResponse(apiResult)
       
-      // 결과 변환 및 품질 평가
-      const qwenResult = this.transformOpenRouterResult(extractedText, processingTime)
+      throw new Error('모든 재시도 실패')
       
-      console.log('✅ OpenRouter Qwen2.5-VL OCR 완료:', {
-        processingTime: processingTime.toFixed(0) + 'ms',
-        textLength: qwenResult.text.length,
-        qualityScore: qwenResult.qualityAssessment.overallScore,
-        confidence: qwenResult.confidence
-      })
-
-      return qwenResult
     } catch (error) {
       console.error('OpenRouter Qwen2.5-VL 처리 실패:', error)
       throw error
@@ -979,6 +1017,90 @@ class QwenOCRService {
       }
       reader.onerror = () => {
         reject(new Error('파일을 Base64로 변환하는데 실패했습니다.'))
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // 이미지 최적화가 포함된 Base64 변환
+  private async convertFileToBase64WithOptimization(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      // 파일 크기가 5MB 이상이면 최적화
+      if (file.size > 5 * 1024 * 1024) {
+        console.log('📸 큰 이미지 감지, 최적화 수행...')
+        this.optimizeImageSize(file)
+          .then(optimizedFile => this.convertFileToBase64(optimizedFile))
+          .then(resolve)
+          .catch(reject)
+      } else {
+        this.convertFileToBase64(file)
+          .then(resolve)
+          .catch(reject)
+      }
+    })
+  }
+
+  // 이미지 크기 최적화
+  private async optimizeImageSize(file: File): Promise<File> {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d')
+      const img = new Image()
+      
+      if (!ctx) {
+        reject(new Error('Canvas 컨텍스트 생성 실패'))
+        return
+      }
+
+      img.onload = () => {
+        // 최대 해상도 제한 (OCR에 충분한 품질 유지)
+        const maxWidth = 1920
+        const maxHeight = 1920
+        
+        let { width, height } = img
+        
+        // 비율 유지하면서 크기 조정
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height)
+          width = Math.floor(width * ratio)
+          height = Math.floor(height * ratio)
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        // 고품질 렌더링
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(img, 0, 0, width, height)
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const optimizedFile = new File([blob], file.name, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            })
+            
+            console.log('✅ 이미지 최적화 완료:', {
+              원본: `${(file.size / 1024 / 1024).toFixed(1)}MB`,
+              최적화: `${(optimizedFile.size / 1024 / 1024).toFixed(1)}MB`,
+              해상도: `${width}×${height}`
+            })
+            
+            resolve(optimizedFile)
+          } else {
+            reject(new Error('이미지 최적화 실패'))
+          }
+        }, 'image/jpeg', 0.85) // 적당한 압축률
+      }
+
+      img.onerror = () => reject(new Error('이미지 로딩 실패'))
+      
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        if (e.target?.result) {
+          img.src = e.target.result as string
+        }
       }
       reader.readAsDataURL(file)
     })

@@ -1,5 +1,6 @@
 import Tesseract from 'tesseract.js'
 import { qwenOCRService, convertToTextRecognitionResult, QwenOCRResult } from './qwenOCR'
+import { recognizeTextInImageImproved } from './improvedOCR'
 
 export interface TextRecognitionResult {
   text: string
@@ -280,62 +281,10 @@ class TextRecognitionService {
 // 싱글톤 인스턴스
 export const textRecognitionService = new TextRecognitionService()
 
-// 유틸리티 함수들 - Qwen2.5-VL 우선 사용 (개선된 버전)
+// 유틸리티 함수들 - 개선된 OCR 서비스 사용
 export const recognizeTextInImage = async (file: File): Promise<TextRecognitionResult> => {
-  const startTime = performance.now()
-  
-  try {
-    console.log('🔍 고성능 OCR 서비스 사용 시도...')
-    
-    // Qwen 서비스 상태 확인
-    const serviceStatus = qwenOCRService.getServiceStatus()
-    console.log('📊 Qwen 서비스 상태:', serviceStatus)
-    
-    // 파일 유효성 검사
-    validateImageFile(file)
-    
-    // Qwen2.5-VL 서비스 사용 시도
-    const qwenResult = await qwenOCRService.processImage(file)
-    
-    // Qwen 결과를 기존 형식으로 변환
-    const result = convertToTextRecognitionResult(qwenResult)
-    
-    // 결과 검증 및 향상
-    const enhancedResult = enhanceTextRecognitionResult(result)
-    
-    console.log('✅ 고성능 OCR 완료:', {
-      service: 'Qwen2.5-VL',
-      processingTime: enhancedResult.processingTime.toFixed(0) + 'ms',
-      qualityScore: enhancedResult.qualityAssessment.overallScore,
-      textLength: enhancedResult.text.length
-    })
-    
-    return enhancedResult
-  } catch (error) {
-    console.warn('⚠️ 고성능 OCR 실패, 폴백 서비스 사용:', error)
-    
-    try {
-      // 폴백: 기존 Tesseract.js 사용
-      const fallbackResult = await textRecognitionService.recognizeTextFromFile(file)
-      
-      // 폴백 결과도 향상
-      const enhancedFallbackResult = enhanceTextRecognitionResult(fallbackResult)
-      
-      console.log('✅ 폴백 OCR 완료:', {
-        service: 'Tesseract.js',
-        processingTime: enhancedFallbackResult.processingTime.toFixed(0) + 'ms',
-        qualityScore: enhancedFallbackResult.qualityAssessment.overallScore,
-        textLength: enhancedFallbackResult.text.length
-      })
-      
-      return enhancedFallbackResult
-    } catch (fallbackError) {
-      console.error('❌ 모든 OCR 서비스 실패:', fallbackError)
-      
-      // 최종 폴백: 기본 결과 반환
-      return createErrorResult(file, error as Error, performance.now() - startTime)
-    }
-  }
+  console.log('🎯 개선된 OCR 서비스 사용:', file.name)
+  return await recognizeTextInImageImproved(file)
 }
 
 // 파일 유효성 검사

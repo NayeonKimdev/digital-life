@@ -45,14 +45,14 @@ export const useFileUpload = () => {
         // 이미지 내용 분석 (메타데이터 전달)
         fileData.imageContentAnalysis = await analyzeImageContent(file, fileData.imageMetadata)
         
-        // 텍스트 인식 수행 (Qwen 우선, 안전한 폴백)
+        // 텍스트 인식 수행 (개선된 타임아웃 처리)
         try {
           console.log('🔍 텍스트 인식 시작:', file.name)
           
-          // 15초 타임아웃으로 텍스트 인식 수행
+          // Promise.race를 사용한 타임아웃 처리
           const textRecognitionPromise = recognizeTextInImage(file)
           const timeoutPromise = new Promise<TextRecognitionResult>((_, reject) => 
-            setTimeout(() => reject(new Error('텍스트 인식 타임아웃 (15초)')), 15000)
+            setTimeout(() => reject(new Error('텍스트 인식 타임아웃 (20초)')), 20000)
           )
           
           fileData.textRecognitionResult = await Promise.race([
@@ -64,13 +64,16 @@ export const useFileUpload = () => {
             fileName: file.name,
             textLength: fileData.textRecognitionResult.text.length,
             confidence: fileData.textRecognitionResult.confidence,
-            processingTime: fileData.textRecognitionResult.processingTime
+            processingTime: fileData.textRecognitionResult.processingTime,
+            qualityScore: fileData.textRecognitionResult.qualityAssessment?.overallScore || 0
           })
-        } catch (error) {
-          console.warn('⚠️ 텍스트 인식 실패, 기본값 설정:', error)
-          // 실패시에도 기본 구조 유지
+          
+        } catch (error: any) {
+          console.warn('⚠️ 텍스트 인식 실패, 기본값 설정:', error.message)
+          
+          // 실패시에도 기본 구조 유지하되 더 상세한 오류 정보 제공
           fileData.textRecognitionResult = {
-            text: `텍스트 인식 실패: ${error instanceof Error ? error.message : '알 수 없는 오류'}`,
+            text: `텍스트 인식 실패: ${error.message}`,
             confidence: 0.1,
             words: [],
             lines: [],
@@ -86,46 +89,63 @@ export const useFileUpload = () => {
               readabilityScore: 0
             }
           }
+          
+          // 에러 타입별 추가 처리
+          if (error.message.includes('타임아웃')) {
+            console.warn('⏰ 타임아웃으로 인한 실패 - 이미지 크기나 복잡도를 확인하세요')
+            fileData.textRecognitionResult.text = '텍스트 인식 타임아웃 - 이미지가 너무 크거나 복잡합니다'
+          } else if (error.message.includes('API')) {
+            console.warn('🌐 API 연결 문제 - 네트워크 상태를 확인하세요')
+            fileData.textRecognitionResult.text = 'API 연결 실패 - 네트워크 상태를 확인하세요'
+          }
         }
         
-        // 객체 인식 수행 (타임아웃 추가)
-        try {
-          console.log('객체 인식 시작:', file.name)
-          
-          // 20초 타임아웃으로 객체 인식 수행
-          const objectDetectionPromise = detectObjectsInImage(file)
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('객체 인식 타임아웃 (20초)')), 20000)
-          )
-          
-          fileData.objectDetectionResult = await Promise.race([
-            objectDetectionPromise,
-            timeoutPromise
-          ]) as ObjectDetectionResult
-          
-          console.log('객체 인식 완료:', fileData.objectDetectionResult)
-        } catch (error) {
-          console.warn('객체 인식 실패:', error)
-          // 객체 인식 실패해도 파일 처리는 계속 진행
-        }
-
-        // 고급 이미지 분석 수행 (선택적)
-        try {
-          console.log('고급 이미지 분석 시작:', file.name)
-          const img = new Image()
-          img.crossOrigin = 'anonymous'
-          
-          await new Promise((resolve, reject) => {
-            img.onload = resolve
-            img.onerror = reject
-            img.src = fileData.preview!
+        // 객체 인식 수행 (비동기 처리로 메인 플로우 차단 방지)
+        console.log('🔍 객체 인식 시작:', file.name)
+        const objectDetectionPromise = detectObjectsInImage(file)
+          .then(result => {
+            fileData.objectDetectionResult = result
+            console.log('✅ 객체 인식 완료:', {
+              fileName: file.name,
+              objectCount: result.objects.length,
+              processingTime: result.processingTime
+            })
           })
-          
-          fileData.advancedAnalysisResult = await analyzeImageAdvanced(img)
-          console.log('고급 이미지 분석 완료:', fileData.advancedAnalysisResult)
+          .catch(error => {
+            console.warn('⚠️ 객체 인식 실패:', error.message)
+            // 객체 인식 실패는 전체 프로세스를 중단시키지 않음
+          })
+
+        // 고급 이미지 분석 수행 (선택적, 비동기)
+        console.log('⚡ 고급 이미지 분석 시작:', file.name)
+        const advancedAnalysisPromise = (async () => {
+          try {
+            const img = new Image()
+            img.crossOrigin = 'anonymous'
+            
+            await new Promise((resolve, reject) => {
+              img.onload = resolve
+              img.onerror = reject
+              img.src = fileData.preview!
+            })
+            
+            const { analyzeImageAdvanced } = await import('@/utils/advancedImageAnalysis')
+            fileData.advancedAnalysisResult = await analyzeImageAdvanced(img)
+            console.log('✅ 고급 이미지 분석 완료:', file.name)
+          } catch (error) {
+            console.warn('⚠️ 고급 이미지 분석 실패:', error)
+          }
+        })()
+
+        // 모든 비동기 작업 완료 대기 (타임아웃 적용)
+        try {
+          await Promise.race([
+            Promise.allSettled([objectDetectionPromise, advancedAnalysisPromise]),
+            new Promise(resolve => setTimeout(resolve, 25000)) // 25초 최대 대기
+          ])
+          console.log('🏁 모든 이미지 분석 완료:', file.name)
         } catch (error) {
-          console.warn('고급 이미지 분석 실패:', error)
-          // 고급 분석 실패해도 파일 처리는 계속 진행
+          console.warn('⚠️ 일부 분석 작업 타임아웃:', error)
         }
       } else if (file.type === 'application/json') {
         fileData.content = await parseJsonFile(file)
