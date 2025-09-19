@@ -1,7 +1,4 @@
-import Tesseract from 'tesseract.js'
-import { qwenOCRService, convertToTextRecognitionResult, QwenOCRResult } from './qwenOCR'
-import { recognizeTextInImageImproved } from './improvedOCR'
-
+// Qwen2.5-VL 기반 고성능 텍스트 인식 서비스
 export interface TextRecognitionResult {
   text: string
   confidence: number
@@ -36,175 +33,270 @@ export interface TextRecognitionResult {
     hasNumbers: boolean
     readabilityScore: number
   }
+  // 이미지 분석 결과 추가
+  imageAnalysis?: {
+    topic: string
+    description: string
+    detectedElements: string[]
+    confidence: number
+  }
 }
 
-// TextBasedClassification 인터페이스 제거 - 단순화
+class QwenTextRecognitionService {
+  private apiEndpoint: string
+  private apiKey: string | undefined
+  private isAvailable: boolean = false
+  private cache: Map<string, TextRecognitionResult> = new Map()
 
-class TextRecognitionService {
-  private worker: Tesseract.Worker | null = null
-  private isInitialized = false
-
-  async initialize(): Promise<void> {
-    if (this.isInitialized && this.worker) {
-      return
-    }
-
-    try {
-      console.log('OCR 텍스트 인식 서비스를 초기화 중...')
-      
-      // Tesseract.js 워커 생성 (한국어 + 영어 지원)
-      this.worker = await Tesseract.createWorker('kor+eng', 1, {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            console.log(`OCR 진행률: ${Math.round(m.progress * 100)}%`)
-          }
-        }
-      })
-      
-      await this.worker.reinitialize()
-      await this.worker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789가-힣()[]{}.,;:!?@#$%^&*+-=<>/\\|`~"\' ',
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK, // 단일 블록으로 처리
-        tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY,
-        preserve_interword_spaces: '1',
-        tessedit_create_hocr: '0',
-        tessedit_create_tsv: '0',
-        tessedit_create_boxfile: '0',
-        // 추가 정확도 향상 설정
-        tessedit_char_blacklist: '',
-        classify_enable_learning: '0',
-        textord_min_linesize: '2.5',
-        textord_tabfind_show_vlines: '0'
-      })
-      
-      this.isInitialized = true
-      console.log('OCR 텍스트 인식 서비스 초기화 완료')
-    } catch (error) {
-      console.error('OCR 초기화 실패:', error)
-      throw new Error('텍스트 인식 서비스를 초기화할 수 없습니다.')
+  constructor() {
+    // OpenRouter API 설정
+    this.apiEndpoint = process.env.NEXT_PUBLIC_API_ENDPOINT || 'https://openrouter.ai/api/v1/chat/completions'
+    this.apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY
+    
+    console.log('🔧 Qwen2.5-VL 텍스트 인식 서비스 초기화:', {
+      endpoint: this.apiEndpoint,
+      hasApiKey: !!this.apiKey,
+      apiKeyLength: this.apiKey?.length || 0
+    })
+    
+    // API 키 검증
+    if (!this.apiKey) {
+      console.error('❌ OpenRouter API 키가 설정되지 않았습니다!')
+      console.log('💡 해결방법: .env.local 파일에 NEXT_PUBLIC_OPENROUTER_API_KEY=your_api_key 추가')
+    } else {
+      console.log('✅ API 키 설정 확인됨')
+      this.isAvailable = true
     }
   }
 
-  async recognizeText(imageElement: HTMLImageElement): Promise<TextRecognitionResult> {
-    if (!this.worker) {
-      await this.initialize()
-    }
-
-    if (!this.worker) {
-      throw new Error('OCR 워커가 초기화되지 않았습니다.')
-    }
-
+  // 메인 텍스트 인식 함수
+  async recognizeTextFromFile(file: File): Promise<TextRecognitionResult> {
     const startTime = performance.now()
 
     try {
-      console.log('이미지에서 텍스트 인식 시작...')
-      console.log('이미지 크기:', imageElement.width, 'x', imageElement.height)
+      console.log('🚀 Qwen2.5-VL 텍스트 인식 시작:', file.name)
+
+      if (!this.isAvailable || !this.apiKey) {
+        throw new Error('Qwen2.5-VL 서비스가 사용 불가능합니다. API 키를 확인해주세요.')
+      }
+
+      // 파일 해시 생성 (캐시 키)
+      const fileHash = await this.generateFileHash(file)
       
-      const { data } = await this.worker.recognize(imageElement)
-      const endTime = performance.now()
-      const processingTime = endTime - startTime
+      // 캐시 확인
+      if (this.cache.has(fileHash)) {
+        console.log('🚀 캐시에서 결과 반환')
+        return this.cache.get(fileHash)!
+      }
+
+      // 이미지를 Base64로 변환 (최적화된 크기로)
+      const base64Image = await this.optimizeImageForOCR(file)
+      console.log('📷 이미지 Base64 변환 완료, 크기:', base64Image.length)
+
+      // Qwen2.5-VL API 호출
+      const result = await this.callQwenAPI(base64Image, file.type)
       
-      console.log('텍스트 인식 완료:', {
-        text: data.text?.substring(0, 100) + (data.text?.length > 100 ? '...' : ''),
-        confidence: data.confidence,
-        processingTime: processingTime.toFixed(0) + 'ms'
+      // 결과 검증 및 후처리
+      const processedResult = this.processQwenResult(result, performance.now() - startTime)
+
+      // 결과 캐싱
+      this.cache.set(fileHash, processedResult)
+
+      console.log('✅ Qwen2.5-VL 텍스트 인식 완료:', {
+        processingTime: processedResult.processingTime.toFixed(0) + 'ms',
+        textLength: processedResult.text.length,
+        qualityScore: processedResult.qualityAssessment.overallScore,
+        topic: processedResult.imageAnalysis?.topic
       })
 
-      // 단어별 정보 추출 (타입 안전하게 수정)
-      const words = (data as any).words?.map((word: any) => ({
-        text: word.text?.trim() || '',
-        confidence: (word.confidence || 0) / 100,
-        bbox: {
-          x0: word.bbox?.x0 || 0,
-          y0: word.bbox?.y0 || 0,
-          x1: word.bbox?.x1 || 0,
-          y1: word.bbox?.y1 || 0
-        }
-      })).filter((word: any) => word.text.length > 0) || []
-
-      // 라인별 정보 추출 (타입 안전하게 수정)
-      const lines = (data as any).lines?.map((line: any) => ({
-        text: line.text?.trim() || '',
-        confidence: (line.confidence || 0) / 100,
-        bbox: {
-          x0: line.bbox?.x0 || 0,
-          y0: line.bbox?.y0 || 0,
-          x1: line.bbox?.x1 || 0,
-          y1: line.bbox?.y1 || 0
-        }
-      })).filter((line: any) => line.text.length > 0) || []
-
-      // 텍스트 정제 및 품질 개선
-      const cleanedText = data.text
-        ?.trim()
-        ?.replace(/\s+/g, ' ') // 여러 공백을 하나로
-        ?.replace(/[^\w\s가-힣.,;:!?()[\]{}@#$%^&*+-=<>/\\|`~"']/g, '') // 특수문자 정리
-        || ''
-
-      // 품질 평가 수행
-      const qualityAssessment = this.assessTextQuality(cleanedText, words, (data.confidence || 0) / 100)
-
-      console.log('텍스트 품질 평가:', qualityAssessment)
-
-      return {
-        text: cleanedText,
-        confidence: Math.max(0, Math.min(1, (data.confidence || 0) / 100)),
-        words,
-        lines,
-        processingTime,
-        qualityAssessment
-      }
+      return processedResult
     } catch (error) {
-      console.error('텍스트 인식 실패:', error)
-      throw new Error('텍스트 인식 중 오류가 발생했습니다.')
+      console.error('❌ Qwen2.5-VL 텍스트 인식 실패:', error)
+      throw new Error(`텍스트 인식 실패: ${(error as Error).message}`)
     }
   }
 
-  async recognizeTextFromFile(file: File): Promise<TextRecognitionResult> {
-    return new Promise((resolve, reject) => {
-      console.log('파일에서 텍스트 인식 시작:', file.name, file.size + ' bytes')
-      
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      
-      img.onload = async () => {
-        try {
-          console.log('이미지 로딩 완료, 텍스트 인식 시작...')
-          const result = await this.recognizeText(img)
-          console.log('파일 텍스트 인식 완료:', {
-            fileName: file.name,
-            textLength: result.text.length,
-            confidence: result.confidence,
-            processingTime: result.processingTime
-          })
-          resolve(result)
-        } catch (error) {
-          console.error('파일 텍스트 인식 실패:', error)
-          reject(error)
+  // Qwen2.5-VL API 호출
+  private async callQwenAPI(base64Image: string, imageType: string): Promise<any> {
+    const maxRetries = 2
+    let currentRetry = 0
+
+    while (currentRetry < maxRetries) {
+      try {
+        console.log(`📤 Qwen2.5-VL API 요청 시도 ${currentRetry + 1}/${maxRetries}...`)
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 120000) // 120초 타임아웃으로 증가
+
+        const response = await fetch(this.apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+            'X-Title': 'Digital Life OCR Service'
+          },
+          body: JSON.stringify({
+            model: 'qwen/qwen2.5-vl-72b-instruct:free',
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: `Extract all text from this image accurately and analyze the main topic.
+
+Response format (JSON):
+{
+  "text": "All extracted text",
+  "confidence": 0.95,
+  "imageAnalysis": {
+    "topic": "Main topic of the image",
+    "description": "Detailed description of the image",
+    "detectedElements": ["Key elements detected"],
+    "confidence": 0.9
+  }
+}`
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${imageType};base64,${base64Image}`
+                    }
+                  }
+                ]
+              }
+            ],
+            max_tokens: 1000,
+            temperature: 0.1
+          }),
+          signal: controller.signal
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Qwen2.5-VL API 요청 실패: ${response.status} - ${errorText}`)
         }
-      }
-      
-      img.onerror = (error) => {
-        console.error('이미지 로딩 실패:', error)
-        reject(new Error('이미지 로딩에 실패했습니다.'))
-      }
-      
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        if (e.target?.result) {
-          img.src = e.target.result as string
+
+        const apiResult = await response.json()
+        console.log('📥 Qwen2.5-VL API 응답 수신 성공')
+
+        return apiResult
+      } catch (error: any) {
+        currentRetry++
+        
+        if (error.name === 'AbortError') {
+          console.warn(`⏰ 요청 타임아웃 (시도 ${currentRetry}/${maxRetries})`)
         } else {
-          reject(new Error('파일 읽기에 실패했습니다.'))
+          console.warn(`❌ API 요청 실패 (시도 ${currentRetry}/${maxRetries}):`, error.message)
+        }
+        
+        if (currentRetry < maxRetries) {
+          console.log('🔄 1초 후 재시도...')
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        } else {
+          throw error
         }
       }
-      reader.onerror = () => {
-        reject(new Error('파일 읽기 중 오류가 발생했습니다.'))
-      }
-      reader.readAsDataURL(file)
-    })
+    }
+    
+    throw new Error('모든 재시도 실패')
   }
 
-  // 텍스트 품질 평가 함수
+  // Qwen API 응답 처리
+  private processQwenResult(apiResult: any, processingTime: number): TextRecognitionResult {
+    try {
+      const content = apiResult.choices?.[0]?.message?.content
+      if (!content) {
+        throw new Error('API 응답에 내용이 없습니다.')
+      }
+
+      console.log('📝 Qwen2.5-VL 응답 내용:', content.substring(0, 200) + '...')
+
+      // JSON 파싱 시도
+      let parsedResult: any
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          parsedResult = JSON.parse(jsonMatch[0])
+        } else {
+          throw new Error('JSON 형식을 찾을 수 없습니다.')
+        }
+      } catch (parseError) {
+        console.warn('⚠️ JSON 파싱 실패, 기본 구조로 처리:', parseError)
+        parsedResult = {
+          text: content.trim(),
+          confidence: 0.8,
+          words: [],
+          lines: [],
+          imageAnalysis: {
+            topic: '분석 실패',
+            description: '이미지 분석에 실패했습니다.',
+            detectedElements: [],
+            confidence: 0.3
+          }
+        }
+      }
+
+      // 결과 검증 및 보완
+      const result: TextRecognitionResult = {
+        text: parsedResult.text || '',
+        confidence: Math.max(0, Math.min(1, parsedResult.confidence || 0.8)),
+        words: parsedResult.words || this.extractWordsFromText(parsedResult.text || ''),
+        lines: parsedResult.lines || this.extractLinesFromText(parsedResult.text || ''),
+        processingTime,
+        qualityAssessment: this.assessTextQuality(parsedResult.text || '', parsedResult.words || [], parsedResult.confidence || 0.8),
+        imageAnalysis: parsedResult.imageAnalysis || {
+          topic: '분석 실패',
+          description: '이미지 분석에 실패했습니다.',
+          detectedElements: [],
+          confidence: 0.3
+        }
+      }
+
+      // 텍스트 후처리
+      result.text = this.postProcessText(result.text)
+
+      return result
+    } catch (error) {
+      console.error('❌ Qwen 결과 처리 실패:', error)
+      throw new Error('API 응답을 처리할 수 없습니다.')
+    }
+  }
+
+  // 텍스트에서 단어 추출
+  private extractWordsFromText(text: string): any[] {
+    const words = text.split(/\s+/).filter(word => word.length > 0)
+    return words.map((word, index) => ({
+      text: word,
+      confidence: 0.8,
+      bbox: {
+        x0: index * 50,
+        y0: 0,
+        x1: (index + 1) * 50,
+        y1: 20
+      }
+    }))
+  }
+
+  // 텍스트에서 라인 추출
+  private extractLinesFromText(text: string): any[] {
+    const lines = text.split('\n').filter(line => line.trim().length > 0)
+    return lines.map((line, index) => ({
+      text: line.trim(),
+      confidence: 0.8,
+      bbox: {
+        x0: 0,
+        y0: index * 25,
+        x1: line.length * 10,
+        y1: (index + 1) * 25
+      }
+    }))
+  }
+
+  // 텍스트 품질 평가
   private assessTextQuality(text: string, words: any[], confidence: number): TextRecognitionResult['qualityAssessment'] {
     const textLength = text.length
     const wordCount = words.length
@@ -220,12 +312,12 @@ class TextRecognitionService {
     // 가독성 점수 계산
     const readabilityScore = this.calculateReadabilityScore(text, words)
 
-    // 전체 점수 계산 (0-100)
+    // 전체 점수 계산
     const overallScore = Math.round(
-      (averageConfidence * 40) + // 신뢰도 40%
-      (readabilityScore * 30) + // 가독성 30%
-      (Math.min(textLength / 50, 1) * 20) + // 텍스트 길이 20%
-      (wordCount > 0 ? 10 : 0) // 단어 존재 여부 10%
+      (averageConfidence * 40) + 
+      (readabilityScore * 30) + 
+      (Math.min(textLength / 50, 1) * 20) + 
+      (wordCount > 0 ? 10 : 0)
     )
 
     return {
@@ -247,44 +339,146 @@ class TextRecognitionService {
     let score = 0
 
     // 단어 길이 다양성
-    const avgWordLength = words.length > 0 
-      ? words.reduce((sum, word) => sum + word.text.length, 0) / words.length 
-      : 0
-    score += Math.min(avgWordLength / 5, 1) * 25
+    if (words.length > 0) {
+      const avgWordLength = words.reduce((sum, word) => sum + word.text.length, 0) / words.length
+      score += Math.min(avgWordLength / 5, 1) * 0.4
+    }
 
-    // 문장 구조 (마침표, 쉼표 등)
+    // 문장 구조
     const punctuationCount = (text.match(/[.,;:!?]/g) || []).length
-    score += Math.min(punctuationCount / text.length * 100, 1) * 25
+    score += Math.min(punctuationCount / text.length * 100, 1) * 0.3
 
-    // 대소문자 혼용 (영어의 경우)
-    const hasMixedCase = /[a-z]/.test(text) && /[A-Z]/.test(text)
-    score += hasMixedCase ? 25 : 0
-
-    // 숫자와 문자의 적절한 혼합
-    const hasNumbers = /[0-9]/.test(text)
-    const hasLetters = /[a-zA-Z가-힣]/.test(text)
-    score += (hasNumbers && hasLetters) ? 25 : 0
+    // 언어 혼합 보너스
+    const hasKorean = /[가-힣]/.test(text)
+    const hasEnglish = /[a-zA-Z]/.test(text)
+    if (hasKorean && hasEnglish) {
+      score += 0.3
+    }
 
     return Math.min(score, 1)
   }
 
-  // 워커 정리
-  async terminate(): Promise<void> {
-    if (this.worker) {
-      await this.worker.terminate()
-      this.worker = null
-      this.isInitialized = false
+  // 텍스트 후처리
+  private postProcessText(text: string): string {
+    if (!text) return ''
+
+    return text
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      .replace(/([.!?])\s*([a-zA-Z가-힣])/g, '$1 $2')
+      .replace(/([a-zA-Z가-힣])\s*,\s*([a-zA-Z가-힣])/g, '$1, $2')
+      .replace(/\s*=\s*/g, ' = ')
+      .replace(/\s*\(\s*/g, ' (')
+      .replace(/\s*\)\s*/g, ') ')
+  }
+
+  // 파일 해시 생성
+  private async generateFileHash(file: File): Promise<string> {
+    const buffer = await file.arrayBuffer()
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  // 파일을 Base64로 변환
+  private async convertFileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const result = reader.result as string
+        const base64 = result.split(',')[1]
+        resolve(base64)
+      }
+      reader.onerror = () => {
+        reject(new Error('파일을 Base64로 변환하는데 실패했습니다.'))
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // 이미지 크기 최적화 (타임아웃 방지)
+  private async optimizeImageForOCR(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        
+        if (!ctx) {
+          reject(new Error('Canvas 컨텍스트를 생성할 수 없습니다.'))
+          return
+        }
+
+        // 이미지 크기 제한 (최대 800px로 더 작게)
+        const maxSize = 800
+        let { width, height } = img
+        
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height)
+          width *= ratio
+          height *= ratio
+        }
+
+        canvas.width = width
+        canvas.height = height
+        
+        // 이미지 그리기
+        ctx.drawImage(img, 0, 0, width, height)
+        
+        // JPEG 품질 설정 (70% 품질로 더 압축)
+        const optimizedBase64 = canvas.toDataURL('image/jpeg', 0.7)
+        const base64 = optimizedBase64.split(',')[1]
+        
+        console.log(`📐 이미지 최적화 완료: ${img.width}x${img.height} → ${width}x${height}`)
+        resolve(base64)
+      }
+      
+      img.onerror = () => {
+        reject(new Error('이미지를 로드할 수 없습니다.'))
+      }
+      
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  // 서비스 상태 확인
+  getServiceStatus(): { available: boolean, endpoint: string } {
+    return {
+      available: this.isAvailable,
+      endpoint: this.apiEndpoint
+    }
+  }
+
+  // 캐시 클리어
+  clearCache(): void {
+    this.cache.clear()
+    console.log('🗑️ Qwen2.5-VL 캐시 클리어 완료')
+  }
+
+  // 성능 통계
+  getPerformanceStats() {
+    return {
+      cacheSize: this.cache.size,
+      isAvailable: this.isAvailable,
+      endpoint: this.apiEndpoint
     }
   }
 }
 
 // 싱글톤 인스턴스
-export const textRecognitionService = new TextRecognitionService()
+export const textRecognitionService = new QwenTextRecognitionService()
 
-// 유틸리티 함수들 - 개선된 OCR 서비스 사용
+// 메인 함수 - Qwen2.5-VL 사용
 export const recognizeTextInImage = async (file: File): Promise<TextRecognitionResult> => {
-  console.log('🎯 개선된 OCR 서비스 사용:', file.name)
-  return await recognizeTextInImageImproved(file)
+  console.log('🎯 Qwen2.5-VL 텍스트 인식 서비스 사용:', file.name)
+  return await textRecognitionService.recognizeTextFromFile(file)
+}
+
+// 이미지 분석과 함께 텍스트 인식
+export const recognizeTextAndAnalyzeImage = async (file: File): Promise<TextRecognitionResult> => {
+  console.log('🎯 Qwen2.5-VL 텍스트 인식 및 이미지 분석 서비스 사용:', file.name)
+  return await textRecognitionService.recognizeTextFromFile(file)
 }
 
 // 파일 유효성 검사
@@ -313,204 +507,30 @@ function validateImageFile(file: File): void {
   })
 }
 
-// 텍스트 인식 결과 향상
-function enhanceTextRecognitionResult(result: TextRecognitionResult): TextRecognitionResult {
-  // 텍스트 후처리
-  const enhancedText = enhanceRecognizedText(result.text)
-  
-  // 품질 평가 재계산
-  const enhancedQuality = recalculateQualityAssessment(enhancedText, result.words, result.confidence)
-  
-  return {
-    ...result,
-    text: enhancedText,
-    qualityAssessment: enhancedQuality
-  }
-}
-
-// 인식된 텍스트 향상
-function enhanceRecognizedText(text: string): string {
-  if (!text) return ''
-
-  return text
-    .trim()
-    // 여러 공백을 하나로
-    .replace(/\s+/g, ' ')
-    // 일반적인 OCR 오류 수정
-    .replace(/rn/g, 'm')
-    .replace(/cl/g, 'd')
-    .replace(/li/g, 'h')
-    .replace(/I1/g, 'H')
-    .replace(/0O/g, 'OO')
-    // 한국어 특수 오류 수정
-    .replace(/ㅇ/g, 'O')
-    .replace(/ㅁ/g, 'M')
-    .replace(/ㅂ/g, 'B')
-    // 문장 부호 정리
-    .replace(/([.!?])\s*([a-zA-Z가-힣])/g, '$1 $2')
-    // 특수문자 정리
-    .replace(/[^\w\s가-힣.,;:!?()[\]{}@#$%^&*+-=<>/\\|`~"']/g, '')
-}
-
-// 품질 평가 재계산
-function recalculateQualityAssessment(text: string, words: any[], confidence: number): TextRecognitionResult['qualityAssessment'] {
-  const textLength = text.length
-  const wordCount = words.length
-  const averageConfidence = words.length > 0 
-    ? words.reduce((sum, word) => sum + word.confidence, 0) / words.length 
-    : confidence
-
-  // 언어 감지
-  const hasKorean = /[가-힣]/.test(text)
-  const hasEnglish = /[a-zA-Z]/.test(text)
-  const hasNumbers = /[0-9]/.test(text)
-
-  // 향상된 가독성 점수 계산
-  const readabilityScore = calculateEnhancedReadability(text, words, { hasKorean, hasEnglish, hasNumbers })
-
-  // 전체 점수 계산 (향상된 알고리즘)
-  const overallScore = calculateOverallQualityScore({
-    confidence: averageConfidence,
-    readability: readabilityScore,
-    textLength,
-    wordCount,
-    hasKorean,
-    hasEnglish,
-    hasNumbers
-  })
-
-  return {
-    overallScore: Math.max(0, Math.min(100, overallScore)),
-    textLength,
-    wordCount,
-    averageConfidence: Math.round(averageConfidence * 100) / 100,
-    hasKorean,
-    hasEnglish,
-    hasNumbers,
-    readabilityScore: Math.round(readabilityScore * 100) / 100
-  }
-}
-
-// 향상된 가독성 점수 계산
-function calculateEnhancedReadability(text: string, words: any[], languageInfo: any): number {
-  if (text.length === 0) return 0
-
-  let score = 0
-
-  // 기본 가독성 요소들
-  if (words.length > 0) {
-    const avgWordLength = words.reduce((sum, word) => sum + word.text.length, 0) / words.length
-    score += Math.min(avgWordLength / 5, 1) * 0.3
-  }
-
-  // 문장 구조
-  const punctuationCount = (text.match(/[.,;:!?]/g) || []).length
-  score += Math.min(punctuationCount / text.length * 100, 1) * 0.3
-
-  // 언어별 특화 점수
-  if (languageInfo.hasKorean) {
-    const koreanChars = text.match(/[가-힣]/g) || []
-    const uniqueChars = new Set(koreanChars).size
-    score += Math.min(uniqueChars / 20, 1) * 0.2
-  }
-
-  if (languageInfo.hasEnglish) {
-    const hasMixedCase = /[a-z]/.test(text) && /[A-Z]/.test(text)
-    score += hasMixedCase ? 0.2 : 0
-  }
-
-  return Math.min(score, 1)
-}
-
-// 전체 품질 점수 계산
-function calculateOverallQualityScore(metrics: any): number {
-  const weights = {
-    confidence: 0.4,
-    readability: 0.3,
-    textLength: 0.15,
-    wordCount: 0.1,
-    languageBonus: 0.05
-  }
-
-  let score = 0
-  score += metrics.confidence * weights.confidence
-  score += metrics.readability * weights.readability
-  score += Math.min(metrics.textLength / 100, 1) * weights.textLength
-  score += Math.min(metrics.wordCount / 20, 1) * weights.wordCount
-
-  // 언어 혼합 보너스
-  if (metrics.hasKorean && metrics.hasEnglish) {
-    score += weights.languageBonus
-  }
-
-  return Math.round(score * 100)
-}
-
-// 에러 결과 생성
-function createErrorResult(file: File, error: Error, processingTime: number): TextRecognitionResult {
-  console.warn('🆘 에러 결과 생성:', error.message)
-
-  return {
-    text: `OCR 처리 실패: ${error.message}`,
-    confidence: 0.1,
-    words: [],
-    lines: [],
-    processingTime,
-    qualityAssessment: {
-      overallScore: 10,
-      textLength: 0,
-      wordCount: 0,
-      averageConfidence: 0.1,
-      hasKorean: false,
-      hasEnglish: false,
-      hasNumbers: false,
-      readabilityScore: 0
-    }
-  }
-}
-
-// 디버깅 및 상태 확인 유틸리티
+// 디버깅 유틸리티
 export const OCRDebugUtils = {
-  // Qwen 서비스 상태 확인
-  checkQwenStatus: () => {
-    const status = qwenOCRService.getServiceStatus()
+  // 서비스 상태 확인
+  checkServiceStatus: () => {
+    const status = textRecognitionService.getServiceStatus()
     console.log('🔍 Qwen2.5-VL 서비스 상태:', status)
     return status
   },
   
   // 성능 통계 확인
   getPerformanceStats: () => {
-    const stats = qwenOCRService.getPerformanceStats()
+    const stats = textRecognitionService.getPerformanceStats()
     console.log('📊 OCR 성능 통계:', stats)
     return stats
   },
   
-  // 서비스 재연결 시도
-  reconnectQwen: async () => {
-    console.log('🔄 Qwen 서비스 재연결 시도...')
-    await qwenOCRService.checkConnectionOnClient()
-    const status = qwenOCRService.getServiceStatus()
-    console.log('✅ 재연결 결과:', status)
-    return status
-  },
-  
-  // 클라이언트에서 API 연결 테스트
-  testApiConnection: async () => {
-    console.log('🧪 API 연결 테스트 시작...')
-    try {
-      await qwenOCRService.checkConnectionOnClient()
-      const status = qwenOCRService.getServiceStatus()
-      console.log('📊 테스트 결과:', status)
-      return status.available
-    } catch (error) {
-      console.error('❌ API 연결 테스트 실패:', error)
-      return false
-    }
+  // 캐시 클리어
+  clearCache: () => {
+    textRecognitionService.clearCache()
   },
   
   // 설정 가이드 출력
   showSetupGuide: () => {
-    const status = qwenOCRService.getServiceStatus()
+    const status = textRecognitionService.getServiceStatus()
     const guide = {
       title: 'OpenRouter API를 통한 Qwen2.5-VL OCR 서비스 설정 가이드',
       steps: [
@@ -536,5 +556,3 @@ export const OCRDebugUtils = {
     return guide
   }
 }
-
-// analyzeTextForClassification 함수 제거 - 단순화

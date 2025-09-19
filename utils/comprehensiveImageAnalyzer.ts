@@ -44,19 +44,15 @@ export class ComprehensiveImageAnalyzer {
       const imageProperties = await this.extractImageProperties(file)
       console.log('🖼️ 이미지 속성 추출 완료')
 
-      // 3. 병렬로 모든 분석 실행 (성능 최적화)
+      // 3. 병렬로 모든 분석 실행 (성능 최적화) - 객체 인식 비활성화
       const [
         colorAnalysis,
-        peopleDetection,
-        objectDetection,
         sceneAnalysis,
         textAnalysis,
         brandDetection,
         aestheticAnalysis
       ] = await Promise.allSettled([
         this.analyzeColors(file),
-        this.detectPeople(file),
-        this.detectObjects(file),
         this.analyzeScene(file),
         this.analyzeText(file),
         this.detectBrands(file),
@@ -68,8 +64,8 @@ export class ComprehensiveImageAnalyzer {
         fileInfo,
         imageProperties,
         colorAnalysis: this.getValueOrDefault(colorAnalysis, this.getDefaultColorAnalysis()),
-        peopleDetection: this.getValueOrDefault(peopleDetection, this.getDefaultPeopleDetection()),
-        objectDetection: this.getValueOrDefault(objectDetection, this.getDefaultObjectDetection()),
+        peopleDetection: this.getDefaultPeopleDetection(), // 비활성화
+        objectDetection: this.getDefaultObjectDetection(), // 비활성화
         sceneAnalysis: this.getValueOrDefault(sceneAnalysis, this.getDefaultSceneAnalysis()),
         textAnalysis: this.getValueOrDefault(textAnalysis, this.getDefaultTextAnalysis()),
         brandDetection: this.getValueOrDefault(brandDetection, { brands: [] }),
@@ -79,8 +75,6 @@ export class ComprehensiveImageAnalyzer {
           processingTime: performance.now() - startTime,
           servicesUsed: this.getServicesUsed([
             colorAnalysis,
-            peopleDetection,
-            objectDetection,
             sceneAnalysis,
             textAnalysis,
             brandDetection,
@@ -88,15 +82,13 @@ export class ComprehensiveImageAnalyzer {
           ]),
           confidence: this.calculateOverallConfidence([
             colorAnalysis,
-            peopleDetection,
-            objectDetection,
             sceneAnalysis,
-            textAnalysis
+            textAnalysis,
+            brandDetection,
+            aestheticAnalysis
           ]),
           errors: this.extractErrors([
             colorAnalysis,
-            peopleDetection,
-            objectDetection,
             sceneAnalysis,
             textAnalysis,
             brandDetection,

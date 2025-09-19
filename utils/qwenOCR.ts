@@ -319,7 +319,21 @@ class QwenOCRService {
                   content: [
                     {
                       type: 'text',
-                      text: '이미지의 모든 텍스트를 추출하세요. 한국어와 영어 모두 인식해주세요.'
+                      text: `이미지의 모든 텍스트를 정확하게 추출해주세요. 다음 사항을 주의깊게 처리해주세요:
+
+1. 한국어 텍스트: 한글 자모를 정확히 인식하고 조합해주세요
+2. 영어 텍스트: 대소문자와 숫자를 정확히 구분해주세요  
+3. 과학/수학 표기: n = 1, 2s, 3p, 전자수 2개 등의 표기를 정확히 인식해주세요
+4. 특수문자: 괄호, 등호, 콤마 등을 정확히 인식해주세요
+5. 레이아웃: 텍스트의 위치와 구조를 유지해주세요
+
+응답 형식:
+{
+  "text": "인식된 전체 텍스트",
+  "confidence": 0.95,
+  "words": [{"text": "단어", "confidence": 0.9, "bbox": {"x0": 0, "y0": 0, "x1": 10, "y1": 10}}],
+  "lines": [{"text": "라인", "confidence": 0.9, "bbox": {"x0": 0, "y0": 0, "x1": 10, "y1": 10}}]
+}`
                     },
                     {
                       type: 'image_url',
@@ -1116,25 +1130,32 @@ class QwenOCRService {
 
       console.log('📝 추출된 원본 텍스트:', content.substring(0, 200) + '...')
 
-      // JSON 형식으로 응답을 파싱 시도
-      try {
-        const jsonMatch = content.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          const parsedJson = JSON.parse(jsonMatch[0])
-          console.log('✅ JSON 파싱 성공:', parsedJson)
-          return parsedJson
+      // JSON 형식으로 응답을 파싱 시도 (여러 패턴 시도)
+      const jsonPatterns = [
+        /\{[\s\S]*\}/, // 기본 JSON 패턴
+        /```json\s*(\{[\s\S]*?\})\s*```/, // 마크다운 JSON 패턴
+        /```\s*(\{[\s\S]*?\})\s*```/, // 일반 코드 블록 패턴
+      ]
+
+      for (const pattern of jsonPatterns) {
+        try {
+          const match = content.match(pattern)
+          if (match) {
+            const jsonString = match[1] || match[0]
+            const parsedJson = JSON.parse(jsonString)
+            console.log('✅ JSON 파싱 성공:', parsedJson)
+            
+            // 결과 검증 및 보완
+            return this.validateAndEnhanceQwenResult(parsedJson)
+          }
+        } catch (parseError) {
+          console.warn('⚠️ JSON 파싱 시도 실패:', parseError)
+          continue
         }
-      } catch (parseError) {
-        console.warn('⚠️ JSON 파싱 실패, 일반 텍스트로 처리:', parseError)
       }
 
-      // JSON 파싱 실패시 일반 텍스트로 처리
-      const result = {
-        text: content.trim(),
-        confidence: 0.8,
-        words: [],
-        lines: []
-      }
+      // JSON 파싱 실패시 일반 텍스트로 처리 (개선된 버전)
+      const result = this.parsePlainTextResponse(content)
       
       console.log('📄 일반 텍스트로 처리됨:', result)
       return result
@@ -1142,6 +1163,135 @@ class QwenOCRService {
       console.error('❌ API 응답 처리 실패:', error)
       throw new Error('API 응답을 처리할 수 없습니다.')
     }
+  }
+
+  // Qwen 결과 검증 및 보완
+  private validateAndEnhanceQwenResult(result: any): any {
+    // 기본 구조 검증
+    if (!result.text) {
+      result.text = ''
+    }
+
+    // 신뢰도 검증
+    if (typeof result.confidence !== 'number' || result.confidence < 0 || result.confidence > 1) {
+      result.confidence = 0.9 // 기본값 설정
+    }
+
+    // 단어 정보 검증 및 보완
+    if (!Array.isArray(result.words)) {
+      result.words = this.extractWordsFromText(result.text)
+    }
+
+    // 라인 정보 검증 및 보완
+    if (!Array.isArray(result.lines)) {
+      result.lines = this.extractLinesFromText(result.text)
+    }
+
+    // 텍스트 후처리 적용
+    result.text = this.postProcessQwenText(result.text)
+
+    return result
+  }
+
+  // 일반 텍스트 응답 파싱
+  private parsePlainTextResponse(content: string): any {
+    // 텍스트 정리
+    const cleanedText = content.trim()
+    
+    // 단어와 라인 추출
+    const words = this.extractWordsFromText(cleanedText)
+    const lines = this.extractLinesFromText(cleanedText)
+    
+    // 신뢰도 추정 (텍스트 길이와 복잡도 기반)
+    const confidence = this.estimateConfidenceFromText(cleanedText)
+
+    return {
+      text: cleanedText,
+      confidence,
+      words,
+      lines
+    }
+  }
+
+  // 텍스트에서 단어 추출
+  private extractWordsFromText(text: string): any[] {
+    const words = text.split(/\s+/).filter(word => word.length > 0)
+    return words.map((word, index) => ({
+      text: word,
+      confidence: 0.8,
+      bbox: {
+        x0: index * 50, // 대략적인 위치
+        y0: 0,
+        x1: (index + 1) * 50,
+        y1: 20
+      }
+    }))
+  }
+
+  // 텍스트에서 라인 추출
+  private extractLinesFromText(text: string): any[] {
+    const lines = text.split('\n').filter(line => line.trim().length > 0)
+    return lines.map((line, index) => ({
+      text: line.trim(),
+      confidence: 0.8,
+      bbox: {
+        x0: 0,
+        y0: index * 25, // 대략적인 위치
+        x1: line.length * 10,
+        y1: (index + 1) * 25
+      }
+    }))
+  }
+
+  // 텍스트 기반 신뢰도 추정
+  private estimateConfidenceFromText(text: string): number {
+    let confidence = 0.7 // 기본값
+
+    // 한국어 포함시 신뢰도 증가
+    if (/[가-힣]/.test(text)) {
+      confidence += 0.1
+    }
+
+    // 영어 포함시 신뢰도 증가
+    if (/[a-zA-Z]/.test(text)) {
+      confidence += 0.1
+    }
+
+    // 숫자 포함시 신뢰도 증가
+    if (/[0-9]/.test(text)) {
+      confidence += 0.05
+    }
+
+    // 텍스트 길이에 따른 조정
+    if (text.length > 50) {
+      confidence += 0.05
+    }
+
+    return Math.min(0.95, confidence)
+  }
+
+  // Qwen 텍스트 후처리
+  private postProcessQwenText(text: string): string {
+    if (!text) return ''
+
+    return text
+      .trim()
+      // 여러 공백을 하나로
+      .replace(/\s+/g, ' ')
+      // 줄바꿈 정리
+      .replace(/\n\s*\n/g, '\n')
+      // 문장 부호 정리
+      .replace(/([.!?])\s*([a-zA-Z가-힣])/g, '$1 $2')
+      .replace(/([a-zA-Z가-힣])\s*([.!?])/g, '$1$2')
+      // 쉼표 정리
+      .replace(/([a-zA-Z가-힣])\s*,\s*([a-zA-Z가-힣])/g, '$1, $2')
+      // 콜론 정리
+      .replace(/([a-zA-Z가-힣])\s*:\s*([a-zA-Z가-힣])/g, '$1: $2')
+      // 등호 정리
+      .replace(/\s*=\s*/g, ' = ')
+      // 괄호 정리
+      .replace(/\s*\(\s*/g, ' (')
+      .replace(/\s*\)\s*/g, ') ')
   }
 
   // OpenRouter 결과를 Qwen 형식으로 변환

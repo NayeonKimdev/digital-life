@@ -52,7 +52,7 @@ export const useFileUpload = () => {
         try {
           const comprehensiveAnalysisPromise = analyzeImageComprehensively(file)
           const timeoutPromise = new Promise<ComprehensiveImageMetadata>((_, reject) => 
-            setTimeout(() => reject(new Error('통합 분석 타임아웃 (30초)')), 30000)
+            setTimeout(() => reject(new Error('통합 분석 타임아웃 (60초)')), 60000)
           )
           
           fileData.comprehensiveMetadata = await Promise.race([
@@ -82,7 +82,7 @@ export const useFileUpload = () => {
             // Promise.race를 사용한 타임아웃 처리
             const textRecognitionPromise = recognizeTextInImage(file)
             const timeoutPromise = new Promise<TextRecognitionResult>((_, reject) => 
-              setTimeout(() => reject(new Error('텍스트 인식 타임아웃 (20초)')), 20000)
+              setTimeout(() => reject(new Error('텍스트 인식 타임아웃 (40초)')), 40000)
             )
             
             fileData.textRecognitionResult = await Promise.race([
